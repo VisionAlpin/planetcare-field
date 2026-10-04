@@ -217,6 +217,7 @@ def _build_series(db, field_id, crop_years):
         if profile:
             series.append({
                 "label": str(cy.year),
+                "date": f"{cy.year}-07-01",  # Mitte der Saison als X-Achsen-Datum
                 "water": round(float(profile.score_water)) if profile.score_water else None,
                 "soil": round(float(profile.score_biodiversity)) if profile.score_biodiversity else None,
                 "protection": round(float(profile.score_pesticide)) if profile.score_pesticide else None,
