@@ -163,9 +163,12 @@ def get_field_overview(
         for c in crop_years
     ]
 
-    hint = None
+    hint_obj = None
     if profile and profile.score_biodiversity and float(profile.score_biodiversity) < 40:
-        hint = "Die Bodenvielfalt liegt unter dem regionalen Durchschnitt. Mögliche Ursachen: hohe Homogenität der Vegetation, geringe Randstrukturen."
+        hint_obj = {
+            "text": "Die Bodenvielfalt liegt unter dem regionalen Durchschnitt. Mögliche Ursachen: hohe Homogenität der Vegetation, geringe Randstrukturen.",
+            "link": "#behandlungen",
+        }
 
     result = {
         "farm": {"id": str(farm.id), "name": farm.name},
@@ -190,12 +193,12 @@ def get_field_overview(
             "protection": score_block(profile.score_pesticide if profile else None, ["pesticide"],
                 explanation="Pflanzenschutzbelastung basierend auf eingetragenen Behandlungen (kg Wirkstoff/ha)."),
         },
-        "hint": hint,
+        "hint": hint_obj,
         "series": series,
         "methodology": {
             "version": profile.method_version if profile else "1.0",
-            "calculated_at": str(profile.calculated_at.date() if profile and profile.calculated_at else date.today()),
-            "sources": "Copernicus Sentinel-2, EDO CDI",
+            "computedAt": str(profile.calculated_at.date() if profile and profile.calculated_at else date.today()),
+            "dataSources": ["Copernicus Sentinel-2", "EDO CDI"],
         },
     }
     return result
