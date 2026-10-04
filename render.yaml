@@ -6,6 +6,7 @@ services:
     dockerfilePath: ./api/Dockerfile
     dockerContext: .
     healthCheckPath: /health
+    plan: starter
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -16,9 +17,9 @@ services:
       - key: SESSION_SECRET
         generateValue: true
       - key: CDSE_CLIENT_ID
-        sync: false
+        value: placeholder
       - key: CDSE_CLIENT_SECRET
-        sync: false
+        value: placeholder
 
   - type: cron
     name: pcf-jobs
@@ -33,14 +34,15 @@ services:
           name: pcf-db
           property: connectionString
       - key: CDSE_CLIENT_ID
-        sync: false
+        value: placeholder
       - key: CDSE_CLIENT_SECRET
-        sync: false
+        value: placeholder
       - key: CDS_API_KEY
-        sync: false
+        value: placeholder
 
 databases:
   - name: pcf-db
     region: frankfurt
     postgresMajorVersion: "16"
     databaseName: planetcare_field
+    plan: starter
