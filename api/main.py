@@ -130,15 +130,18 @@ def get_field_overview(
         h = hits[-1]
         return {"source": h.source or "Sentinel-2", "date": str(h.acquired_at or date.today())}
 
-    def score_block(score_val, indicator_names):
+    def score_block(score_val, indicator_names, explanation=""):
         if score_val is None:
-            return {"available": False}
+            return {"available": False, "explanation": explanation}
         si = source_info(indicator_names)
         return {
             "available": True,
             "value": round(float(score_val)),
+            "previousSeason": None,
+            "regionalAverage": None,
             "source": si["source"] if si else "Methodik v1.0",
             "date": si["date"] if si else str(date.today()),
+            "explanation": explanation,
         }
 
     # Build series from indicator history
@@ -165,19 +168,27 @@ def get_field_overview(
         hint = "Die Bodenvielfalt liegt unter dem regionalen Durchschnitt. Mögliche Ursachen: hohe Homogenität der Vegetation, geringe Randstrukturen."
 
     result = {
-        "farm": {"name": farm.name, "region": farm.region or ""},
+        "farm": {"id": str(farm.id), "name": farm.name},
         "field": {
             "id": str(field.id),
             "name": field.name or "Schlag",
-            "subtitle": f"{farm.region} · {cy.crop_type or 'Anbau'} · {area_ha} ha · Saison {cy.year}",
+            "municipality": farm.region or "",
+            "crop": cy.crop_type or "Anbau",
+            "season": cy.year,
+            "geometry": field.geom or {"type": "Polygon", "coordinates": [[[13.08, 47.92], [13.09, 47.92], [13.09, 47.91], [13.08, 47.91], [13.08, 47.92]]]},
         },
-        "seasons": seasons_list,
-        "fields": seasons_list,  # alias for field selector
+        "seasons": [c.year for c in crop_years],
+        "fields": [
+            {"id": str(f.id), "name": f.name or "Schlag"}
+            for f in db.query(Field).filter(Field.farm_id == farm.id).all()
+        ],
         "scores": {
-            "total": score_block(profile.score_total if profile else None, ["ndvi_mean", "cdi"]),
-            "water": score_block(profile.score_water if profile else None, ["ndvi_mean", "cdi"]),
-            "soil":  score_block(profile.score_biodiversity if profile else None, ["ndvi_std"]),
-            "protection": score_block(profile.score_pesticide if profile else None, ["pesticide"]),
+            "water": score_block(profile.score_water if profile else None, ["ndvi_mean", "cdi"],
+                explanation="Wie gut der Schlag Trockenphasen übersteht, gemessen an Dürrestufe (CDI) und Vegetationsverlauf."),
+            "soil": score_block(profile.score_biodiversity if profile else None, ["ndvi_std"],
+                explanation="Entwicklung der Bodengesundheit: räumliche Variabilität des Vegetationsindex."),
+            "protection": score_block(profile.score_pesticide if profile else None, ["pesticide"],
+                explanation="Pflanzenschutzbelastung basierend auf eingetragenen Behandlungen (kg Wirkstoff/ha)."),
         },
         "hint": hint,
         "series": series,
