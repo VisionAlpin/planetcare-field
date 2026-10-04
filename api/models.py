@@ -1,15 +1,11 @@
-"""SQLAlchemy models — PlanetCare Field"""
+"""SQLAlchemy models — PlanetCare Field (Phase 0, JSON geometry)"""
 
 import uuid
-from datetime import date, datetime
-from typing import Optional
-
-from geoalchemy2 import Geometry
 from sqlalchemy import (
     Boolean, Column, Date, DateTime, ForeignKey,
     Integer, Numeric, String, Text, func,
 )
-from sqlalchemy.dialects.postgresql import UUID
+from sqlalchemy.dialects.postgresql import UUID, JSONB
 from sqlalchemy.orm import DeclarativeBase, relationship
 
 
@@ -24,12 +20,12 @@ def _uuid():
 class Farm(Base):
     __tablename__ = "pcf_farms"
 
-    id         = Column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+    id          = Column(Text, primary_key=True, default=_uuid)
     owner_email = Column(Text, nullable=False, index=True)
-    name       = Column(Text, nullable=False)
-    country    = Column(String(2), default="AT")
-    region     = Column(Text)
-    created_at = Column(DateTime(timezone=True), server_default=func.now())
+    name        = Column(Text, nullable=False)
+    country     = Column(String(2), default="AT")
+    region      = Column(Text)
+    created_at  = Column(DateTime(timezone=True), server_default=func.now())
 
     fields = relationship("Field", back_populates="farm", cascade="all, delete-orphan")
 
@@ -37,11 +33,11 @@ class Farm(Base):
 class Field(Base):
     __tablename__ = "pcf_fields"
 
-    id         = Column(UUID(as_uuid=False), primary_key=True, default=_uuid)
-    farm_id    = Column(UUID(as_uuid=False), ForeignKey("pcf_farms.id", ondelete="CASCADE"), nullable=False)
+    id         = Column(Text, primary_key=True, default=_uuid)
+    farm_id    = Column(Text, ForeignKey("pcf_farms.id", ondelete="CASCADE"), nullable=False)
     name       = Column(Text)
     area_ha    = Column(Numeric)
-    geom       = Column(Geometry("POLYGON", srid=4326))
+    geom       = Column(JSONB)   # GeoJSON Polygon
     created_at = Column(DateTime(timezone=True), server_default=func.now())
 
     farm       = relationship("Farm", back_populates="fields")
@@ -51,8 +47,8 @@ class Field(Base):
 class CropYear(Base):
     __tablename__ = "pcf_crop_years"
 
-    id           = Column(UUID(as_uuid=False), primary_key=True, default=_uuid)
-    field_id     = Column(UUID(as_uuid=False), ForeignKey("pcf_fields.id", ondelete="CASCADE"), nullable=False)
+    id           = Column(Text, primary_key=True, default=_uuid)
+    field_id     = Column(Text, ForeignKey("pcf_fields.id", ondelete="CASCADE"), nullable=False)
     year         = Column(Integer, nullable=False)
     crop_type    = Column(Text)
     sowing_date  = Column(Date)
@@ -66,9 +62,9 @@ class CropYear(Base):
 class IndicatorValue(Base):
     __tablename__ = "pcf_indicator_values"
 
-    id             = Column(UUID(as_uuid=False), primary_key=True, default=_uuid)
-    crop_year_id   = Column(UUID(as_uuid=False), ForeignKey("pcf_crop_years.id", ondelete="CASCADE"), nullable=False)
-    indicator      = Column(Text, nullable=False)  # ndvi_mean, ndvi_std, cdi, pesticide
+    id             = Column(Text, primary_key=True, default=_uuid)
+    crop_year_id   = Column(Text, ForeignKey("pcf_crop_years.id", ondelete="CASCADE"), nullable=False)
+    indicator      = Column(Text, nullable=False)
     value          = Column(Numeric)
     unit           = Column(Text)
     source         = Column(Text)
@@ -82,8 +78,8 @@ class IndicatorValue(Base):
 class FieldProfile(Base):
     __tablename__ = "pcf_field_profiles"
 
-    id                 = Column(UUID(as_uuid=False), primary_key=True, default=_uuid)
-    crop_year_id       = Column(UUID(as_uuid=False), ForeignKey("pcf_crop_years.id"), nullable=False)
+    id                 = Column(Text, primary_key=True, default=_uuid)
+    crop_year_id       = Column(Text, ForeignKey("pcf_crop_years.id"), nullable=False)
     score_water        = Column(Numeric)
     score_biodiversity = Column(Numeric)
     score_pesticide    = Column(Numeric)
@@ -99,9 +95,9 @@ class FieldProfile(Base):
 class ProductLink(Base):
     __tablename__ = "pcf_product_links"
 
-    id               = Column(UUID(as_uuid=False), primary_key=True, default=_uuid)
+    id               = Column(Text, primary_key=True, default=_uuid)
     gtin             = Column(Text, nullable=False, index=True)
-    field_profile_id = Column(UUID(as_uuid=False), ForeignKey("pcf_field_profiles.id", ondelete="CASCADE"))
+    field_profile_id = Column(Text, ForeignKey("pcf_field_profiles.id", ondelete="CASCADE"))
     batch_id         = Column(Text)
     linked_at        = Column(DateTime(timezone=True), server_default=func.now())
 
@@ -111,37 +107,37 @@ class ProductLink(Base):
 class DemandEvent(Base):
     __tablename__ = "pcf_demand_events"
 
-    id                  = Column(UUID(as_uuid=False), primary_key=True, default=_uuid)
-    event_type          = Column(Text, nullable=False)   # scan, compare, compare_choice, filter_verified, survey_wtp
-    gtin                = Column(Text)
-    compared_with       = Column(Text)                   # JSON array als Text
-    category            = Column(Text)
-    region              = Column(Text)                   # AT-5 etc.
-    calendar_week       = Column(Text)                   # 2026-W41
-    panel               = Column(Boolean, default=False)
-    willingness_to_pay  = Column(Numeric)
-    received_at         = Column(DateTime(timezone=True), server_default=func.now())
+    id                 = Column(Text, primary_key=True, default=_uuid)
+    event_type         = Column(Text, nullable=False)
+    gtin               = Column(Text)
+    compared_with      = Column(Text)
+    category           = Column(Text)
+    region             = Column(Text)
+    calendar_week      = Column(Text)
+    panel              = Column(Boolean, default=False)
+    willingness_to_pay = Column(Numeric)
+    received_at        = Column(DateTime(timezone=True), server_default=func.now())
 
 
 class DemandAggregate(Base):
     __tablename__ = "pcf_demand_aggregates"
 
-    id               = Column(UUID(as_uuid=False), primary_key=True, default=_uuid)
-    category         = Column(Text, nullable=False)
-    region           = Column(Text, nullable=False)
-    calendar_week    = Column(Text, nullable=False)
-    n_events         = Column(Integer, default=0)
-    preference_rate  = Column(Numeric)
-    wtp_median       = Column(Numeric)
-    has_panel        = Column(Boolean, default=False)
-    updated_at       = Column(DateTime(timezone=True), server_default=func.now(), onupdate=func.now())
+    id              = Column(Text, primary_key=True, default=_uuid)
+    category        = Column(Text, nullable=False)
+    region          = Column(Text, nullable=False)
+    calendar_week   = Column(Text, nullable=False)
+    n_events        = Column(Integer, default=0)
+    preference_rate = Column(Numeric)
+    wtp_median      = Column(Numeric)
+    has_panel       = Column(Boolean, default=False)
+    updated_at      = Column(DateTime(timezone=True), server_default=func.now())
 
 
 class Consent(Base):
     __tablename__ = "pcf_consents"
 
-    id           = Column(UUID(as_uuid=False), primary_key=True, default=_uuid)
-    farm_id      = Column(UUID(as_uuid=False), ForeignKey("pcf_farms.id", ondelete="CASCADE"))
-    consent_type = Column(Text, nullable=False)   # demand_signals, public_profile
+    id           = Column(Text, primary_key=True, default=_uuid)
+    farm_id      = Column(Text, ForeignKey("pcf_farms.id", ondelete="CASCADE"))
+    consent_type = Column(Text, nullable=False)
     granted      = Column(Boolean, default=False)
     granted_at   = Column(DateTime(timezone=True))

@@ -19,8 +19,8 @@ from models import (
 DEMO_EMAIL = "demo@planetcarescan.at"
 
 # Schlag Nord — Polygon um Oberndorf, Salzburg (vereinfacht)
-GEOM_NORD = "POLYGON((13.08 47.92, 13.09 47.92, 13.09 47.91, 13.08 47.91, 13.08 47.92))"
-GEOM_SUED = "POLYGON((13.10 47.90, 13.11 47.90, 13.11 47.89, 13.10 47.89, 13.10 47.90))"
+GEOM_NORD = [[13.08, 47.92], [13.09, 47.92], [13.09, 47.91], [13.08, 47.91], [13.08, 47.92]]
+GEOM_SUED = [[13.10, 47.90], [13.11, 47.90], [13.11, 47.89], [13.10, 47.89], [13.10, 47.90]]
 
 
 def run():
@@ -42,13 +42,13 @@ def run():
         db.add(farm)
         db.flush()
 
-        def make_field(name, geom_wkt, crop, area):
+        def make_field(name, coords, crop, area):
             f = Field(
                 id=str(uuid.uuid4()),
                 farm_id=farm.id,
                 name=name,
                 area_ha=area,
-                geom=f"SRID=4326;{geom_wkt}",
+                geom={"type": "Polygon", "coordinates": [coords]},
             )
             db.add(f)
             db.flush()

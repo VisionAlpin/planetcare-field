@@ -144,13 +144,14 @@ def get_field_overview(
     # Build series from indicator history
     series = _build_series(db, field.id, crop_years)
 
-    # Area from geometry
-    from geoalchemy2.shape import to_shape
+    # Area from geometry (GeoJSON bbox estimate)
     try:
-        shape = to_shape(field.geom)
+        from shapely.geometry import shape
         from pyproj import Geod
+        geom = field.geom or {}
+        s = shape(geom)
         geod = Geod(ellps="WGS84")
-        area_ha = round(abs(geod.geometry_area_perimeter(shape)[0]) / 10000, 1)
+        area_ha = round(abs(geod.geometry_area_perimeter(s)[0]) / 10000, 1)
     except Exception:
         area_ha = float(field.area_ha or 0)
 
