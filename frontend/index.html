@@ -1,0 +1,149 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0d1f14" />
+  <title>PlanetCare Field</title>
+  <link rel="manifest" href="manifest.json" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Noto+Serif:wght@400;600&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
+  <link href="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.css" rel="stylesheet" />
+  <link rel="stylesheet" href="style.css" />
+</head>
+<body>
+  <header class="app-header">
+    <div class="header-inner">
+      <span class="logo">🌱 PlanetCare Field</span>
+      <span class="demo-badge" id="demoBadge" style="display:none">DEMO</span>
+    </div>
+  </header>
+
+  <nav class="tab-bar">
+    <button class="tab-btn active" data-tab="overview">Übersicht</button>
+    <button class="tab-btn" data-tab="map">Felder &amp; Karte</button>
+    <button class="tab-btn" data-tab="market">Marktsignal</button>
+  </nav>
+
+  <!-- TAB 1: Übersicht -->
+  <section id="tab-overview" class="tab-content active">
+    <div class="farm-title" id="farmTitle">Lade Betriebsdaten…</div>
+
+    <div class="score-circle-wrapper">
+      <svg class="score-ring" viewBox="0 0 120 120" xmlns="http://www.w3.org/2000/svg">
+        <circle class="ring-bg" cx="60" cy="60" r="50" />
+        <circle class="ring-fill" id="ringFill" cx="60" cy="60" r="50"
+          stroke-dasharray="314" stroke-dashoffset="314" />
+      </svg>
+      <div class="score-inner">
+        <span class="score-number" id="scoreTotal">–</span>
+        <span class="score-label">Gesamt</span>
+      </div>
+    </div>
+
+    <div class="indicators">
+      <div class="indicator-card" id="cardWater">
+        <div class="indicator-header">
+          <span class="indicator-icon">💧</span>
+          <span class="indicator-name">Wasser</span>
+          <button class="info-btn" data-info="water" aria-label="Info Wasser">ⓘ</button>
+        </div>
+        <div class="indicator-value" id="scoreWater">–</div>
+        <div class="indicator-meta" id="metaWater"></div>
+      </div>
+      <div class="indicator-card" id="cardBio">
+        <div class="indicator-header">
+          <span class="indicator-icon">🦋</span>
+          <span class="indicator-name">Biodiversität</span>
+          <button class="info-btn" data-info="bio" aria-label="Info Biodiversität">ⓘ</button>
+        </div>
+        <div class="indicator-value" id="scoreBio">–</div>
+        <div class="indicator-meta" id="metaBio"></div>
+      </div>
+      <div class="indicator-card" id="cardPest">
+        <div class="indicator-header">
+          <span class="indicator-icon">🌿</span>
+          <span class="indicator-name">Pflanzenschutz</span>
+          <button class="info-btn" data-info="pest" aria-label="Info Pflanzenschutz">ⓘ</button>
+        </div>
+        <div class="indicator-value" id="scorePest">–</div>
+        <div class="indicator-meta" id="metaPest"></div>
+      </div>
+    </div>
+
+    <div class="method-note">Methode v<span id="methodVersion">1.0</span> · berechnet <span id="calcDate">–</span></div>
+  </section>
+
+  <!-- TAB 2: Felder & Karte -->
+  <section id="tab-map" class="tab-content">
+    <div class="field-info" id="fieldInfo">
+      <span id="fieldName">Kein Schlag ausgewählt</span>
+      <span id="fieldArea"></span>
+      <span id="fieldCrop"></span>
+    </div>
+    <div id="map"></div>
+    <div class="map-actions">
+      <button class="btn-primary" id="btnLoadSatellite">🛰 Satellitendaten laden</button>
+      <button class="btn-secondary" id="btnDrawField">✏️ Schlag einzeichnen</button>
+    </div>
+    <div id="geojsonInput" style="display:none" class="geojson-panel">
+      <label>GeoJSON-Geometrie eingeben:</label>
+      <textarea id="geojsonTextarea" rows="6" placeholder='{"type":"Polygon","coordinates":[[[14.3,48.3],[14.31,48.3],[14.31,48.31],[14.3,48.31],[14.3,48.3]]]}'></textarea>
+      <button class="btn-primary" id="btnApplyGeojson">Anwenden</button>
+    </div>
+    <div id="satelliteStatus" class="status-box" style="display:none"></div>
+  </section>
+
+  <!-- TAB 3: Marktsignal -->
+  <section id="tab-market" class="tab-content">
+    <h2 class="section-title">Marktsignal</h2>
+    <p class="section-sub">Anonyme Verbraucherpräferenzen in Ihrer Region</p>
+
+    <div class="demand-card">
+      <div class="demand-headline" id="demandHeadline">Daten werden geladen…</div>
+      <div class="pref-bar-container">
+        <div class="pref-bar" id="prefBar" style="width:0%"></div>
+      </div>
+      <div class="pref-labels">
+        <span>0%</span><span>50%</span><span>100%</span>
+      </div>
+    </div>
+
+    <div class="demand-card" id="wtpCard">
+      <div class="demand-label">Zahlungsbereitschaft (Median)</div>
+      <div class="wtp-value" id="wtpValue">–</div>
+      <div class="wtp-sub">Aufpreis gegenüber konventionell</div>
+    </div>
+
+    <div class="panel-note" id="panelNote" style="display:none">
+      📊 Basiert auf Panel-Daten
+    </div>
+
+    <div class="demand-optin">
+      <p>Helfen Sie mit — anonym und freiwillig:</p>
+      <button class="btn-primary" id="btnOptIn">Ich bevorzuge nachhaltigeren Anbau</button>
+      <div id="optInForm" style="display:none" class="optin-form">
+        <label>Wie viel % Aufpreis wären Sie bereit zu zahlen?</label>
+        <input type="range" id="wtpSlider" min="0" max="50" value="10" />
+        <span id="wtpSliderVal">10%</span>
+        <button class="btn-primary" id="btnSubmitSignal">Absenden</button>
+        <p class="privacy-note">Keine persönlichen Daten werden gespeichert.</p>
+      </div>
+      <div id="optInThanks" style="display:none" class="thanks-msg">✓ Danke für Ihr Signal!</div>
+    </div>
+  </section>
+
+  <!-- Info Modal -->
+  <div id="infoModal" class="modal" style="display:none">
+    <div class="modal-box">
+      <button class="modal-close" id="modalClose">✕</button>
+      <h3 id="modalTitle"></h3>
+      <p id="modalText"></p>
+    </div>
+  </div>
+
+  <script src="https://unpkg.com/maplibre-gl@4/dist/maplibre-gl.js"></script>
+  <script src="app.js"></script>
+</body>
+</html>

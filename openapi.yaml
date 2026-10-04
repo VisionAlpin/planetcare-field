@@ -1,0 +1,246 @@
+openapi: "3.0.3"
+info:
+  title: PlanetCare Field API
+  version: "0.1.0"
+  description: |
+    Sustainability scoring for agricultural fields.
+    Phase 0 prototype — TRL-4 demonstrator for NOSTRADAMUS / Horizon Europe.
+  license:
+    name: Apache 2.0
+    url: https://www.apache.org/licenses/LICENSE-2.0
+
+servers:
+  - url: http://localhost:8000
+    description: Local development
+  - url: https://field.planetcarescan.app
+    description: Production
+
+paths:
+  /health:
+    get:
+      summary: Health check
+      operationId: health
+      responses:
+        "200":
+          description: Service is healthy
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status: { type: string, example: ok }
+                  version: { type: string, example: 0.1.0 }
+
+  /products/{gtin}/field-profile:
+    get:
+      summary: Get public field profile linked to a GTIN
+      operationId: getProductFieldProfile
+      parameters:
+        - name: gtin
+          in: path
+          required: true
+          schema: { type: string }
+          description: Global Trade Item Number (barcode)
+      responses:
+        "200":
+          description: Public field profile found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ProductFieldProfile"
+        "404":
+          description: No public field profile linked to this GTIN
+
+  /fields/{field_id}/profile:
+    get:
+      summary: Get latest field profile (authenticated)
+      operationId: getFieldProfile
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: field_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Latest field profile
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/FieldProfileResponse"
+        "401": { description: Unauthorized }
+        "404": { description: Field or profile not found }
+
+  /fields/{field_id}/fetch-satellite:
+    post:
+      summary: Trigger satellite data fetch for a field
+      operationId: fetchSatellite
+      security:
+        - bearerAuth: []
+      parameters:
+        - name: field_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Job queued
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  job_id: { type: string, format: uuid }
+                  status: { type: string, example: pending }
+                  field_id: { type: string, format: uuid }
+        "401": { description: Unauthorized }
+        "404": { description: Field not found }
+
+  /fields/{field_id}/satellite-status/{job_id}:
+    get:
+      summary: Check satellite job status
+      operationId: satelliteStatus
+      parameters:
+        - name: field_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+        - name: job_id
+          in: path
+          required: true
+          schema: { type: string, format: uuid }
+      responses:
+        "200":
+          description: Job status
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  status:
+                    type: string
+                    enum: [pending, running, done, error]
+                  ndvi: { $ref: "#/components/schemas/NdviResult" }
+                  error: { type: string }
+        "404": { description: Job not found }
+
+  /demand-signal:
+    post:
+      summary: Record anonymous demand signal
+      operationId: postDemandSignal
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/DemandSignalIn"
+      responses:
+        "200":
+          description: Signal recorded
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  ok: { type: boolean }
+        "500": { description: Storage error }
+
+  /demand-signal/summary:
+    get:
+      summary: Aggregated demand signal summary (min 20 events per group)
+      operationId: demandSignalSummary
+      responses:
+        "200":
+          description: Summary by category+region
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  summary:
+                    type: array
+                    items:
+                      $ref: "#/components/schemas/DemandSummaryItem"
+                  total_signals:
+                    type: integer
+
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+
+  schemas:
+    ProductFieldProfile:
+      type: object
+      properties:
+        gtin: { type: string }
+        batch_id: { type: string, nullable: true }
+        field_profile:
+          type: object
+          properties:
+            score_total: { type: number, nullable: true }
+            score_water: { type: number, nullable: true }
+            score_biodiversity: { type: number, nullable: true }
+            score_pesticide: { type: number, nullable: true }
+            method_version: { type: string }
+            calculated_at: { type: string, format: date-time }
+        region: { type: string, nullable: true }
+        country: { type: string, nullable: true }
+        crop_year: { type: integer, nullable: true }
+        crop_type: { type: string, nullable: true }
+
+    FieldProfileResponse:
+      type: object
+      properties:
+        field_id: { type: string, format: uuid }
+        crop_year:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            year: { type: integer }
+            crop_type: { type: string }
+        profile:
+          type: object
+          properties:
+            id: { type: string, format: uuid }
+            score_water: { type: number, nullable: true }
+            score_biodiversity: { type: number, nullable: true }
+            score_pesticide: { type: number, nullable: true }
+            score_total: { type: number, nullable: true }
+            method_version: { type: string }
+            is_public: { type: boolean }
+            share_token: { type: string }
+            calculated_at: { type: string, format: date-time }
+
+    NdviResult:
+      type: object
+      properties:
+        ndvi_mean: { type: number }
+        ndvi_std: { type: number }
+        cloud_cover: { type: number }
+        date: { type: string, format: date }
+        scene_id: { type: string }
+        source: { type: string }
+
+    DemandSignalIn:
+      type: object
+      properties:
+        category: { type: string, nullable: true }
+        region: { type: string, nullable: true, description: "Coarse region, e.g. AT, DE-BY" }
+        chose_better_field_profile: { type: boolean, nullable: true }
+        willingness_to_pay_pct: { type: number, nullable: true }
+        is_panel: { type: boolean, default: false }
+        panel_code: { type: string, nullable: true }
+
+    DemandSummaryItem:
+      type: object
+      properties:
+        category: { type: string }
+        region: { type: string }
+        n_events: { type: integer }
+        preference_rate: { type: number, description: "0.0–1.0" }
+        willingness_to_pay_pct_median: { type: number, nullable: true }
+        has_panel_data: { type: boolean }
