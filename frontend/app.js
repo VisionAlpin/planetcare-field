@@ -1,4 +1,4 @@
-/* PlanetCare Field — Frontend App */
+/* PlanetCare Field — Frontend App (Redesign) */
 
 const API_BASE = window.location.hostname === 'localhost' || window.location.hostname === '127.0.0.1'
   ? 'http://localhost:8000'
@@ -8,57 +8,109 @@ const params = new URLSearchParams(location.search);
 const DEMO = params.get('demo') === '1';
 const FIELD_ID = params.get('field') || null;
 
-// ── Demo Mock Data ──────────────────────────────────────────────────────────
+// ── Demo Data ───────────────────────────────────────────────────────────────
 const DEMO_DATA = {
-  farm: { name: "Musterbetrieb Oberösterreich", region: "AT-4" },
-  field: { name: "Schlag Süd", area_ha: 12.4, crop_type: "Winterweizen" },
+  farm: { name: "Musterbetrieb Flachgau", region: "Salzburg-Umgebung" },
+  field: { name: "Schlag Nord", subtitle: "Oberndorf · Winterweizen · 12,4 ha · Saison 2026" },
   profile: {
-    score_total: 71, score_water: 78, score_biodiversity: 65, score_pesticide: null,
-    method_version: "1.0", calculated_at: "2026-09-28"
+    score_total: 72,
+    score_water: 78,
+    score_biodiversity: 57,   // heißt jetzt "Boden"
+    score_pesticide: 82,      // MUSS einen Wert haben
+    method_version: "1.0",
+    calculated_at: "2026-09-15"
   },
-  satellite: {
-    ndvi_mean: 0.62, ndvi_std: 0.11, cloud_cover: 8, date: "2026-09-28",
-    scene_id: "S2B_32TPT_20260928"
+  comparisons: {
+    water:        { prev_year: 74, region_avg: 71, source: "Sentinel-2", date: "15.09.2026" },
+    biodiversity: { prev_year: 52, region_avg: 61, source: "Sentinel-2", date: "15.09.2026" },
+    pesticide:    { prev_year: 79, region_avg: 68, source: "Manual",     date: "01.07.2026" },
+    total:        { prev_year: 68, region_avg: 67, source: "Methodik v1.0", date: "15.09.2026" }
   },
-  demand: { preference_rate: 0.68, willingness_pct: 12, n_events: 47, trend: "+3%", has_panel: false }
-};
-
-// Demo field geometry (Austria, near Linz)
-const DEMO_GEOMETRY = {
-  type: "Polygon",
-  coordinates: [[[14.28, 48.30], [14.31, 48.30], [14.31, 48.32], [14.28, 48.32], [14.28, 48.30]]]
+  trend: [
+    { month: "Okt 25", water: 62, soil: 44, pest: 75, total: 60 },
+    { month: "Dez 25", water: 58, soil: 46, pest: 75, total: 60 },
+    { month: "Feb 26", water: 65, soil: 49, pest: 79, total: 64 },
+    { month: "Apr 26", water: 71, soil: 53, pest: 81, total: 68 },
+    { month: "Jun 26", water: 75, soil: 55, pest: 82, total: 71 },
+    { month: "Sep 26", water: 78, soil: 57, pest: 82, total: 72 }
+  ],
+  demand: { preference_rate: 0.68, willingness_pct: 12, n_events: 25, trend: "+3%", is_panel: true }
 };
 
 // ── Info Texts ──────────────────────────────────────────────────────────────
 const INFO = {
+  total: {
+    title: "Gesamt-Score",
+    text: "Der Gesamt-Score aggregiert die drei Teilwerte Wasser, Boden und Pflanzenschutz nach Methodik v1.0."
+  },
   water: {
     title: "Wasser-Score",
     text: "Berechnet aus NDVI-Mittelwert (Vegetationsgesundheit) und dem Combined Drought Indicator (CDI) des Copernicus Emergency Management Service. Datenquelle: Sentinel-2 (ESA), CDI (EU Copernicus)."
   },
   bio: {
-    title: "Biodiversitäts-Score",
-    text: "Abgeleitet aus der räumlichen Variabilität des NDVI (Standardabweichung). Höhere Heterogenität der Vegetation korreliert mit höherer Biodiversität. Datenquelle: Sentinel-2 L2A."
+    title: "Boden-Score",
+    text: "Abgeleitet aus der räumlichen Variabilität des NDVI (Standardabweichung). Höhere Heterogenität der Vegetation korreliert mit höherer Bodenqualität. Datenquelle: Sentinel-2 L2A."
   },
   pest: {
     title: "Pflanzenschutz-Score",
-    text: "Basiert auf manuell eingegebenen Angaben zum Pestizideinsatz (kg Wirkstoff/ha). In Phase 0 optional — ein fehlender Wert bedeutet keine Aussage, nicht kein Einsatz."
+    text: "Basiert auf Angaben zum Pestizideinsatz (kg Wirkstoff/ha). Berechnung: Score = 100 − (Einsatz × Faktor). Datenquelle: Manuelle Eingabe."
   }
 };
 
+// ── Helpers ─────────────────────────────────────────────────────────────────
+function ratingLabel(score) {
+  if (score == null) return { text: '', color: '' };
+  if (score > 80) return { text: 'Sehr gut', color: 'var(--status-good)' };
+  if (score >= 60) return { text: 'Gut',     color: 'var(--status-good)' };
+  if (score >= 40) return { text: 'Mittel',  color: 'var(--status-mid)' };
+  return             { text: 'Schwach',       color: 'var(--status-bad)' };
+}
+
+function setCard(ids, score, comp) {
+  const { valueEl, compEl, sourceEl, ratingEl } = ids;
+
+  if (score == null) {
+    valueEl.innerHTML = '<span class="card-unavailable">Noch keine Daten<a href="#">Behandlungen eintragen</a></span>';
+    compEl.textContent = '';
+    sourceEl.querySelector('span').textContent = '';
+    ratingEl.innerHTML = '';
+    return;
+  }
+
+  valueEl.querySelector('.value-number').textContent = Math.round(score);
+
+  const { text, color } = ratingLabel(score);
+  ratingEl.innerHTML = `<span class="rating-dot" style="background:${color}"></span><span>${text}</span>`;
+
+  if (comp) {
+    compEl.textContent = `Vorjahr: ${comp.prev_year} · Region Ø: ${comp.region_avg}`;
+    sourceEl.querySelector('span').textContent = `${comp.source} · ${comp.date}`;
+  }
+}
+
 // ── Tab Navigation ──────────────────────────────────────────────────────────
+// Wrap tab buttons in inner div for layout
+document.addEventListener('DOMContentLoaded', () => {
+  const tabBar = document.getElementById('tabBar');
+  const inner = document.createElement('div');
+  inner.className = 'tab-bar-inner';
+  while (tabBar.firstChild) inner.appendChild(tabBar.firstChild);
+  tabBar.appendChild(inner);
+});
+
 document.querySelectorAll('.tab-btn').forEach(btn => {
   btn.addEventListener('click', () => {
     document.querySelectorAll('.tab-btn').forEach(b => b.classList.remove('active'));
     document.querySelectorAll('.tab-content').forEach(s => s.classList.remove('active'));
     btn.classList.add('active');
     document.getElementById(`tab-${btn.dataset.tab}`).classList.add('active');
-    if (btn.dataset.tab === 'map' && !window._mapInit) initMap();
   });
 });
 
 // ── Info Modal ──────────────────────────────────────────────────────────────
 document.querySelectorAll('.info-btn').forEach(btn => {
-  btn.addEventListener('click', () => {
+  btn.addEventListener('click', (e) => {
+    e.stopPropagation();
     const key = btn.dataset.info;
     document.getElementById('modalTitle').textContent = INFO[key]?.title || '';
     document.getElementById('modalText').textContent  = INFO[key]?.text  || '';
@@ -72,49 +124,159 @@ document.getElementById('infoModal').addEventListener('click', e => {
   if (e.target === e.currentTarget) e.currentTarget.style.display = 'none';
 });
 
-// ── Score Ring ──────────────────────────────────────────────────────────────
-function setScore(total) {
-  const el = document.getElementById('ringFill');
-  const num = document.getElementById('scoreTotal');
-  if (total == null) { num.textContent = '–'; return; }
-  const circ = 2 * Math.PI * 50; // r=50
-  const offset = circ - (total / 100) * circ;
-  el.style.strokeDasharray  = circ;
-  el.style.strokeDashoffset = offset;
-  el.style.stroke = total >= 70 ? 'var(--good)' : total >= 40 ? 'var(--yellow)' : 'var(--red)';
-  num.textContent = total;
-}
+// ── Render Overview ─────────────────────────────────────────────────────────
+function renderOverview(data) {
+  const { farm, field, profile, comparisons } = data;
 
-function setIndicator(scoreEl, metaEl, cardEl, value, source, date) {
-  if (value == null) {
-    scoreEl.textContent = 'Nicht verfügbar';
-    scoreEl.style.fontSize = '1rem';
-    metaEl.textContent = '';
-    cardEl.className = 'indicator-card';
-  } else {
-    scoreEl.textContent = value;
-    scoreEl.style.fontSize = '';
-    metaEl.textContent = [source, date ? formatDate(date) : ''].filter(Boolean).join(' · ');
-    const cls = value >= 70 ? 'good' : value >= 40 ? 'mid' : 'bad';
-    cardEl.className = `indicator-card ${cls}`;
+  // Header farm name
+  const farmNameEl = document.getElementById('headerFarmName');
+  if (farmNameEl) farmNameEl.textContent = farm?.name || '';
+
+  // Page title
+  const fieldTitleEl = document.getElementById('fieldTitle');
+  const fieldSubEl = document.getElementById('fieldSubtitle');
+  if (fieldTitleEl) fieldTitleEl.textContent = field?.name || 'Schlag Nord';
+  if (fieldSubEl) fieldSubEl.textContent = field?.subtitle || '';
+
+  // Footer
+  const footerEl = document.getElementById('pageFooter');
+  if (footerEl && profile) {
+    footerEl.textContent = `Methodik v${profile.method_version || '1.0'} · berechnet am ${profile.calculated_at || '–'} · Daten: Copernicus Sentinel-2, EDO, ERA5`;
+  }
+
+  // Helper to build card element refs
+  function cardRefs(suffix) {
+    return {
+      valueEl:  document.getElementById(`scoreCard${suffix}`),
+      compEl:   document.getElementById(`comp${suffix}`),
+      sourceEl: document.getElementById(`source${suffix}`),
+      ratingEl: document.getElementById(`rating${suffix}`)
+    };
+  }
+
+  // Total card
+  setCard(
+    { valueEl: document.getElementById('cardTotal'), compEl: document.getElementById('compTotal'), sourceEl: document.getElementById('sourceTotal'), ratingEl: document.getElementById('ratingTotal') },
+    profile?.score_total,
+    comparisons?.total
+  );
+  // Use the value-number span directly
+  const totalNum = document.getElementById('scoreTotal');
+  if (totalNum && profile?.score_total != null) totalNum.textContent = Math.round(profile.score_total);
+  const ratingTotal = ratingLabel(profile?.score_total);
+  const ratingTotalEl = document.getElementById('ratingTotal');
+  if (ratingTotalEl && profile?.score_total != null) {
+    ratingTotalEl.innerHTML = `<span class="rating-dot" style="background:${ratingTotal.color}"></span><span>${ratingTotal.text}</span>`;
+  }
+  const compTotal = document.getElementById('compTotal');
+  if (compTotal && comparisons?.total) compTotal.textContent = `Vorjahr: ${comparisons.total.prev_year} · Region Ø: ${comparisons.total.region_avg}`;
+  const stTotal = document.getElementById('sourceTextTotal');
+  if (stTotal && comparisons?.total) stTotal.textContent = `${comparisons.total.source} · ${comparisons.total.date}`;
+
+  // Water card
+  const waterNum = document.getElementById('scoreWater');
+  if (waterNum && profile?.score_water != null) waterNum.textContent = Math.round(profile.score_water);
+  const ratingWater = ratingLabel(profile?.score_water);
+  const ratingWaterEl = document.getElementById('ratingWater');
+  if (ratingWaterEl && profile?.score_water != null) {
+    ratingWaterEl.innerHTML = `<span class="rating-dot" style="background:${ratingWater.color}"></span><span>${ratingWater.text}</span>`;
+  }
+  const compWater = document.getElementById('compWater');
+  if (compWater && comparisons?.water) compWater.textContent = `Vorjahr: ${comparisons.water.prev_year} · Region Ø: ${comparisons.water.region_avg}`;
+  const stWater = document.getElementById('sourceTextWater');
+  if (stWater && comparisons?.water) stWater.textContent = `${comparisons.water.source} · ${comparisons.water.date}`;
+
+  // Boden card
+  const bioNum = document.getElementById('scoreBio');
+  if (bioNum && profile?.score_biodiversity != null) bioNum.textContent = Math.round(profile.score_biodiversity);
+  const ratingBio = ratingLabel(profile?.score_biodiversity);
+  const ratingBioEl = document.getElementById('ratingBio');
+  if (ratingBioEl && profile?.score_biodiversity != null) {
+    ratingBioEl.innerHTML = `<span class="rating-dot" style="background:${ratingBio.color}"></span><span>${ratingBio.text}</span>`;
+  }
+  const compBio = document.getElementById('compBio');
+  if (compBio && comparisons?.biodiversity) compBio.textContent = `Vorjahr: ${comparisons.biodiversity.prev_year} · Region Ø: ${comparisons.biodiversity.region_avg}`;
+  const stBio = document.getElementById('sourceTextBio');
+  if (stBio && comparisons?.biodiversity) stBio.textContent = `${comparisons.biodiversity.source} · ${comparisons.biodiversity.date}`;
+
+  // Pflanzenschutz card
+  const pestNum = document.getElementById('scorePest');
+  if (pestNum && profile?.score_pesticide != null) {
+    pestNum.textContent = Math.round(profile.score_pesticide);
+  } else if (pestNum) {
+    // Unavailable
+    const cardPest = document.getElementById('cardPest');
+    const valDiv = cardPest.querySelector('.card-value');
+    valDiv.innerHTML = '<span class="card-unavailable">Noch keine Daten<a href="#">Behandlungen eintragen</a></span>';
+  }
+  if (profile?.score_pesticide != null) {
+    const ratingPest = ratingLabel(profile.score_pesticide);
+    const ratingPestEl = document.getElementById('ratingPest');
+    if (ratingPestEl) ratingPestEl.innerHTML = `<span class="rating-dot" style="background:${ratingPest.color}"></span><span>${ratingPest.text}</span>`;
+    const compPest = document.getElementById('compPest');
+    if (compPest && comparisons?.pesticide) compPest.textContent = `Vorjahr: ${comparisons.pesticide.prev_year} · Region Ø: ${comparisons.pesticide.region_avg}`;
+    const stPest = document.getElementById('sourceTextPest');
+    if (stPest && comparisons?.pesticide) stPest.textContent = `${comparisons.pesticide.source} · ${comparisons.pesticide.date}`;
   }
 }
 
-function formatDate(iso) {
-  if (!iso) return '';
-  const d = new Date(iso);
-  return d.toLocaleDateString('de-AT', { day: '2-digit', month: '2-digit', year: 'numeric' });
+// ── Trend Chart (pure SVG) ───────────────────────────────────────────────────
+function renderTrendChart(trendData) {
+  const svg = document.getElementById('trendChart');
+  if (!svg || !trendData || !trendData.length) return;
+
+  const W = 560, H = 200;
+  const padL = 32, padR = 16, padT = 16, padB = 36;
+  const chartW = W - padL - padR;
+  const chartH = H - padT - padB;
+  const n = trendData.length;
+
+  function xPos(i) { return padL + (i / (n - 1)) * chartW; }
+  function yPos(v) { return padT + chartH - (v / 100) * chartH; }
+
+  function makePath(key, color, strokeW) {
+    const pts = trendData.map((d, i) => `${xPos(i)},${yPos(d[key])}`).join(' ');
+    const poly = trendData.map((d, i) => (i === 0 ? 'M' : 'L') + `${xPos(i)} ${yPos(d[key])}`).join(' ');
+    return `<path d="${poly}" fill="none" stroke="${color}" stroke-width="${strokeW}" stroke-linejoin="round" stroke-linecap="round"/>`;
+  }
+
+  // Y-axis grid lines
+  let gridLines = '';
+  [0, 25, 50, 75, 100].forEach(v => {
+    const y = yPos(v);
+    gridLines += `<line x1="${padL}" y1="${y}" x2="${W - padR}" y2="${y}" stroke="var(--border)" stroke-width="1"/>`;
+    gridLines += `<text x="${padL - 4}" y="${y + 4}" font-size="10" fill="var(--text-muted)" text-anchor="end" font-family="Inter,sans-serif">${v}</text>`;
+  });
+
+  // X-axis labels
+  let xLabels = '';
+  trendData.forEach((d, i) => {
+    const x = xPos(i);
+    const y = H - padB + 16;
+    xLabels += `<text x="${x}" y="${y}" font-size="10" fill="var(--text-muted)" text-anchor="middle" font-family="Inter,sans-serif">${d.month}</text>`;
+  });
+
+  // Lines
+  const lines = [
+    makePath('water', '#9CA3AF', 1.5),
+    makePath('soil',  '#6B7280', 1.5),
+    makePath('pest',  '#374151', 1.5),
+    makePath('total', 'var(--brand)', 2),
+  ].join('');
+
+  svg.innerHTML = gridLines + xLabels + lines;
 }
 
-// ── Load Overview Data ──────────────────────────────────────────────────────
+// ── Load Overview ───────────────────────────────────────────────────────────
 async function loadOverview() {
   if (DEMO) {
     document.getElementById('demoBadge').style.display = '';
     renderOverview(DEMO_DATA);
+    renderTrendChart(DEMO_DATA.trend);
     return;
   }
   if (!FIELD_ID) {
-    document.getElementById('farmTitle').textContent = 'Kein Schlag-Parameter (?field=ID) angegeben';
+    document.getElementById('fieldTitle').textContent = 'Kein Schlag-Parameter (?field=ID) angegeben';
     return;
   }
   try {
@@ -125,182 +287,19 @@ async function loadOverview() {
     if (!r.ok) throw new Error(`HTTP ${r.status}`);
     const data = await r.json();
     renderOverview({
-      farm: { name: data.field_id },
+      farm:  { name: data.field_id },
+      field: { name: data.field_id, subtitle: '' },
       profile: data.profile,
+      comparisons: {}
     });
   } catch (e) {
-    document.getElementById('farmTitle').textContent = `Fehler: ${e.message}`;
+    document.getElementById('fieldTitle').textContent = `Fehler: ${e.message}`;
   }
 }
 
-function renderOverview(data) {
-  const { farm, field, profile } = data;
-  document.getElementById('farmTitle').textContent =
-    `${farm?.name || ''}${field?.name ? ' · ' + field.name : ''}`;
-
-  setScore(profile?.score_total ?? null);
-  setIndicator(
-    document.getElementById('scoreWater'),
-    document.getElementById('metaWater'),
-    document.getElementById('cardWater'),
-    profile?.score_water ?? null,
-    'Sentinel-2 + CDI',
-    profile?.calculated_at
-  );
-  setIndicator(
-    document.getElementById('scoreBio'),
-    document.getElementById('metaBio'),
-    document.getElementById('cardBio'),
-    profile?.score_biodiversity ?? null,
-    'Sentinel-2',
-    profile?.calculated_at
-  );
-  setIndicator(
-    document.getElementById('scorePest'),
-    document.getElementById('metaPest'),
-    document.getElementById('cardPest'),
-    profile?.score_pesticide ?? null,
-    'Manuelle Eingabe',
-    profile?.calculated_at
-  );
-  document.getElementById('methodVersion').textContent = profile?.method_version || '1.0';
-  document.getElementById('calcDate').textContent = profile?.calculated_at ? formatDate(profile.calculated_at) : '–';
-}
-
-// ── Map ─────────────────────────────────────────────────────────────────────
-let map;
-window._mapInit = false;
-
-function initMap() {
-  window._mapInit = true;
-  map = new maplibregl.Map({
-    container: 'map',
-    style: {
-      version: 8,
-      sources: {
-        osm: {
-          type: 'raster',
-          tiles: ['https://tile.openstreetmap.org/{z}/{x}/{y}.png'],
-          tileSize: 256,
-          attribution: '© OpenStreetMap contributors'
-        }
-      },
-      layers: [{ id: 'osm', type: 'raster', source: 'osm' }]
-    },
-    center: [14.3, 48.3],
-    zoom: 12
-  });
-
-  map.on('load', () => {
-    const geom = DEMO ? DEMO_GEOMETRY : null;
-    if (geom) showFieldOnMap(geom);
-  });
-
-  // Field info
-  if (DEMO) {
-    const f = DEMO_DATA.field;
-    document.getElementById('fieldName').textContent = f.name;
-    document.getElementById('fieldArea').textContent = `${f.area_ha} ha`;
-    document.getElementById('fieldCrop').textContent = f.crop_type;
-  }
-}
-
-function showFieldOnMap(geometry) {
-  if (!map) return;
-  const geojson = { type: 'Feature', geometry, properties: {} };
-  if (map.getSource('field')) {
-    map.getSource('field').setData(geojson);
-  } else {
-    map.addSource('field', { type: 'geojson', data: geojson });
-    map.addLayer({
-      id: 'field-fill',
-      type: 'fill',
-      source: 'field',
-      paint: { 'fill-color': '#e8b86d', 'fill-opacity': 0.3 }
-    });
-    map.addLayer({
-      id: 'field-outline',
-      type: 'line',
-      source: 'field',
-      paint: { 'line-color': '#e8b86d', 'line-width': 2 }
-    });
-  }
-  // Fit bounds
-  const coords = geometry.coordinates[0];
-  const lons = coords.map(c => c[0]);
-  const lats = coords.map(c => c[1]);
-  map.fitBounds([[Math.min(...lons), Math.min(...lats)], [Math.max(...lons), Math.max(...lats)]], { padding: 40 });
-}
-
-document.getElementById('btnDrawField').addEventListener('click', () => {
-  const panel = document.getElementById('geojsonInput');
-  panel.style.display = panel.style.display === 'none' ? 'block' : 'none';
-});
-
-document.getElementById('btnApplyGeojson').addEventListener('click', () => {
-  try {
-    const raw = document.getElementById('geojsonTextarea').value.trim();
-    const geom = JSON.parse(raw);
-    showFieldOnMap(geom);
-    document.getElementById('geojsonInput').style.display = 'none';
-  } catch (e) {
-    alert('Ungültiges GeoJSON: ' + e.message);
-  }
-});
-
-document.getElementById('btnLoadSatellite').addEventListener('click', async () => {
-  if (DEMO) {
-    const s = DEMO_DATA.satellite;
-    document.getElementById('satelliteStatus').style.display = 'block';
-    document.getElementById('satelliteStatus').innerHTML =
-      `✓ Sentinel-2 Daten: NDVI ${s.ndvi_mean} (±${s.ndvi_std}) · Wolken ${s.cloud_cover}% · ${s.date}<br><small>${s.scene_id}</small>`;
-    return;
-  }
-  if (!FIELD_ID) { alert('Kein Schlag-Parameter gesetzt (?field=ID)'); return; }
-  const token = localStorage.getItem('pcf_token') || '';
-  const status = document.getElementById('satelliteStatus');
-  status.style.display = 'block';
-  status.textContent = '⏳ Satellitendaten werden abgerufen…';
-  try {
-    const r = await fetch(`${API_BASE}/fields/${FIELD_ID}/fetch-satellite`, {
-      method: 'POST',
-      headers: { Authorization: `Bearer ${token}` }
-    });
-    const job = await r.json();
-    status.textContent = `Job gestartet: ${job.job_id} — Status: ${job.status}`;
-    pollJob(job.job_id, FIELD_ID);
-  } catch (e) {
-    status.textContent = `Fehler: ${e.message}`;
-  }
-});
-
-async function pollJob(jobId, fieldId) {
-  const status = document.getElementById('satelliteStatus');
-  for (let i = 0; i < 20; i++) {
-    await new Promise(r => setTimeout(r, 3000));
-    try {
-      const r = await fetch(`${API_BASE}/fields/${fieldId}/satellite-status/${jobId}`);
-      const job = await r.json();
-      if (job.status === 'done') {
-        const n = job.ndvi || {};
-        status.textContent = `✓ NDVI: ${n.ndvi_mean} (±${n.ndvi_std}) · Wolken: ${n.cloud_cover}% · ${n.date}`;
-        return;
-      } else if (job.status === 'error') {
-        status.textContent = `Fehler: ${job.error}`;
-        return;
-      }
-      status.textContent = `⏳ ${job.status}…`;
-    } catch (e) { /* retry */ }
-  }
-  status.textContent = 'Timeout — bitte später neu laden.';
-}
-
-// ── Market Signals ──────────────────────────────────────────────────────────
+// ── Market Signals ───────────────────────────────────────────────────────────
 async function loadMarket() {
-  if (DEMO) {
-    renderMarket(DEMO_DATA.demand);
-    return;
-  }
+  if (DEMO) { renderMarket(DEMO_DATA.demand); return; }
   try {
     const r = await fetch(`${API_BASE}/demand-signal/summary`);
     const data = await r.json();
@@ -310,7 +309,7 @@ async function loadMarket() {
         preference_rate: first.preference_rate,
         willingness_pct: first.willingness_to_pay_pct_median,
         n_events: first.n_events,
-        has_panel: first.has_panel_data
+        is_panel: first.has_panel_data
       });
     } else {
       document.getElementById('demandHeadline').textContent = 'Noch zu wenige Daten (< 20 Signale).';
@@ -325,12 +324,11 @@ function renderMarket(d) {
   document.getElementById('demandHeadline').textContent =
     `${pct} von 100 Verbrauchern bevorzugten nachhaltigeren Anbau`;
   document.getElementById('prefBar').style.width = `${pct}%`;
-  document.getElementById('wtpValue').textContent =
-    d.willingness_pct != null ? `+${d.willingness_pct}%` : '–';
-  if (d.has_panel) document.getElementById('panelNote').style.display = 'block';
+  const wtpEl = document.getElementById('wtpValue');
+  if (wtpEl) wtpEl.textContent = d.willingness_pct != null ? `+${d.willingness_pct}%` : '–';
 }
 
-// ── Opt-in Form ─────────────────────────────────────────────────────────────
+// ── Opt-in ──────────────────────────────────────────────────────────────────
 document.getElementById('btnOptIn').addEventListener('click', () => {
   document.getElementById('optInForm').style.display = 'block';
   document.getElementById('btnOptIn').style.display = 'none';
@@ -353,7 +351,7 @@ document.getElementById('btnSubmitSignal').addEventListener('click', async () =>
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(body)
     });
-  } catch (e) { /* best effort */ }
+  } catch (_) {}
   document.getElementById('optInForm').style.display = 'none';
   document.getElementById('optInThanks').style.display = 'block';
 });
@@ -362,6 +360,11 @@ document.getElementById('btnSubmitSignal').addEventListener('click', async () =>
 if ('serviceWorker' in navigator) {
   navigator.serviceWorker.register('/sw.js').catch(() => {});
 }
+
+// Init Lucide icons after DOM is ready
+window.addEventListener('load', () => {
+  if (window.lucide) lucide.createIcons();
+});
 
 loadOverview();
 loadMarket();

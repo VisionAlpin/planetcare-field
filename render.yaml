@@ -1,0 +1,46 @@
+services:
+  - type: web
+    name: pcf-api
+    runtime: docker
+    region: frankfurt
+    dockerfilePath: ./api/Dockerfile
+    dockerContext: .
+    healthCheckPath: /health
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pcf-db
+          property: connectionString
+      - key: SERVICE_API_KEY
+        generateValue: true
+      - key: SESSION_SECRET
+        generateValue: true
+      - key: CDSE_CLIENT_ID
+        sync: false
+      - key: CDSE_CLIENT_SECRET
+        sync: false
+
+  - type: cron
+    name: pcf-jobs
+    runtime: docker
+    region: frankfurt
+    schedule: "0 2 * * *"
+    dockerfilePath: ./jobs/Dockerfile
+    dockerContext: .
+    envVars:
+      - key: DATABASE_URL
+        fromDatabase:
+          name: pcf-db
+          property: connectionString
+      - key: CDSE_CLIENT_ID
+        sync: false
+      - key: CDSE_CLIENT_SECRET
+        sync: false
+      - key: CDS_API_KEY
+        sync: false
+
+databases:
+  - name: pcf-db
+    region: frankfurt
+    postgresMajorVersion: "16"
+    databaseName: planetcare_field

@@ -82,17 +82,34 @@
   </footer>
 
   <script src="js/icons.js"></script>
-  <script src="data/demo-data.js"></script>
   <script src="js/overview.js"></script>
   <script>
-    // Tab Symbole einsetzen (nur in der mobilen Leiste sichtbar)
+    // Tab Symbole einsetzen
     document.querySelectorAll("[data-icon]").forEach((el) => { el.outerHTML = icon(el.dataset.icon); });
 
-    // Testzustand: index.html?state=missing zeigt Pflanzenschutz ohne Daten
-    const data = structuredClone(window.PCF_DEMO);
-    if (new URLSearchParams(location.search).get("state") === "missing") data.scores.protection.available = false;
+    async function load(fieldId, season) {
+      const res = await fetch(
+        `/api/fields/${encodeURIComponent(fieldId)}/overview?season=${season}`,
+        { credentials: "same-origin" }
+      );
+      if (res.status === 401) { location.href = "/login"; return; }
+      if (!res.ok) throw new Error("Overview " + res.status);
+      PlanetCareField.renderOverview(await res.json());
+    }
 
-    PlanetCareField.renderOverview(data);
+    const params = new URLSearchParams(location.search);
+    load(
+      params.get("field") || "default",
+      params.get("season") || new Date().getFullYear()
+    ).catch(() => {
+      document.querySelector("main .container").innerHTML =
+        "<p>Die Daten konnten gerade nicht geladen werden. Bitte später erneut versuchen.</p>";
+    });
+
+    document.querySelector("[data-field-select]").addEventListener("change", (e) => {
+      const [field, season] = e.target.value.split(":");
+      location.search = `?field=${field}&season=${season}`;
+    });
   </script>
 </body>
 </html>

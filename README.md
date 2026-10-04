@@ -1,67 +1,60 @@
 # PlanetCare Field
 
-**PlanetCare Field** is an open-source sustainability dashboard module for farmers. It shows how sustainably a farm is operated — based on satellite Earth Observation data (Sentinel-2 NDVI, Copernicus CDI) and optional manual inputs — and what the market is willing to pay for sustainable produce. The module links field-level sustainability profiles to product GTINs, enabling transparent supply chains from field to consumer.
+**PlanetCare Field** ist ein offenes Nachhaltigkeits-Dashboard für Landwirte. Es zeigt, wie nachhaltig ein Betrieb wirtschaftet — auf Basis von Satellitendaten (Sentinel-2 NDVI, Copernicus CDI) und optionalen manuellen Eingaben — und verknüpft Schlagprofile mit Produkt-GTINs für transparente Lieferketten.
 
-## Prerequisites
+TRL-4-Demonstrator für das **NOSTRADAMUS**-Projekt (Horizon Europe).
 
-- Python 3.11+
-- Docker & Docker Compose
-- A Supabase account (free tier works) — [supabase.com](https://supabase.com)
-
-## Quickstart
+## Schnellstart (lokal)
 
 ```bash
-# 1. Clone and set up environment
-git clone <repo-url>
-cd PlanetCareField
+# 1. Umgebung vorbereiten
 cp .env.example .env
-# Edit .env — fill in your SUPABASE_SERVICE_KEY
+# .env editieren: DATABASE_URL eintragen
 
-# 2. Apply database schema
-# Open https://supabase.com/dashboard/project/bssctgrkzdoirorpkfds/sql
-# and paste the contents of db/schema.sql
+# 2. Dienste starten
+docker compose up
 
-# 3. Start services
-docker-compose up
-
-# API:      http://localhost:8000
-# Frontend: http://localhost:3000
-# Demo:     http://localhost:3000/?demo=1
+# API:   http://localhost:8000
+# Demo:  http://localhost:8000/demo
+# Docs:  http://localhost:8000/docs
 ```
 
-## API Documentation
-
-See [openapi.yaml](./openapi.yaml) for the full OpenAPI v3 specification.
-
-Key endpoints:
-
-| Method | Path | Description |
-|--------|------|-------------|
-| GET | `/health` | Health check |
-| GET | `/products/{gtin}/field-profile` | Public profile by GTIN |
-| GET | `/fields/{id}/profile` | Field profile (authenticated) |
-| POST | `/fields/{id}/fetch-satellite` | Trigger Sentinel-2 NDVI fetch |
-| POST | `/demand-signal` | Record anonymous preference signal |
-| GET | `/demand-signal/summary` | Aggregated market demand summary |
-
-## Architecture
+## Struktur
 
 ```
-frontend/   Vanilla HTML/CSS/JS PWA (no build step)
-api/        Python FastAPI + httpx → Supabase REST
-db/         PostgreSQL schema (Supabase, RLS-enabled)
+api/        FastAPI + SQLAlchemy, liefert API und Frontend aus
+  main.py       Endpunkte
+  models.py     Tabellen
+  scoring.py    Feldprofil-Berechnung
+  satellite.py  Sentinel-2 + CDI Abruf
+  migrations/   Alembic-Migrationen
+  seed_demo.py  Demo-Daten (Musterbetrieb Flachgau)
+jobs/       Nachtjob (Satellit, Dürre, Scoring)
+web/        Frontend (Vanilla HTML/CSS/JS, kein Build-Step)
+docs/       OpenAPI v3 Beschreibung
+render.yaml Render Blueprint (Infrastruktur as Code)
 ```
 
-Satellite data is fetched from the [Element84 Earth Search STAC API](https://earth-search.aws.element84.com/v1) (free, no account required). Drought data from [Copernicus GDO](https://drought.emergency.copernicus.eu/).
+## API
 
-## NOSTRADAMUS / Horizon Europe Context
+| Methode | Pfad | Wer | Schutz |
+|---------|------|-----|--------|
+| GET | `/health` | Render | offen |
+| GET | `/api/fields/{id}/overview?season=` | Dashboard | Bearer Token |
+| GET | `/api/fields` | Dashboard | Bearer Token |
+| GET | `/api/products/{gtin}/field-profile` | PlanetCareScan Server | SERVICE_API_KEY |
+| POST | `/api/demand-events` | PlanetCareScan Server | SERVICE_API_KEY |
+| GET | `/api/market-signal` | Dashboard | Bearer Token |
+| GET | `/demo` | Gutachter, Partner | offen (nur Demo-Daten) |
 
-This module serves as TRL-4 demonstrator for the **NOSTRADAMUS** project under Horizon Europe. It provides a reproducible, open-source implementation of field-level sustainability scoring linked to market demand signals — a core component of the NOSTRADAMUS value chain transparency framework. The scoring methodology (NDVI-based water and biodiversity indicators + CDI drought index) follows the methodological requirements outlined in the NOSTRADAMUS work packages.
+Vollständige Beschreibung: `/docs` oder `docs/openapi.yaml`
 
-## License
+## Satellitendaten
 
-Apache 2.0 — see [LICENSE](./LICENSE)
+- NDVI: [Element84 Earth Search STAC API](https://earth-search.aws.element84.com/v1) (kostenlos)
+- CDI: [Copernicus GDO](https://drought.emergency.copernicus.eu/)
+- ERA5: Copernicus Climate Data Store (kostenloses Konto nötig)
 
-## Contributing
+## Lizenz
 
-Issues and PRs welcome. Please keep the no-build-step constraint for the frontend and use only open/free data sources.
+Apache 2.0

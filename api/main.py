@@ -1,389 +1,323 @@
-"""PlanetCare Field — FastAPI Backend v0.1.0"""
+"""PlanetCare Field — FastAPI Backend v0.2.0
+Render PostgreSQL (SQLAlchemy) statt Supabase.
+"""
 
+import json
 import os
-import uuid
-import asyncio
-from datetime import date, timedelta
+import secrets
+from datetime import date, datetime, timedelta
+from pathlib import Path
 from typing import Optional
 
-import httpx
-from fastapi import FastAPI, HTTPException, Header, Depends
+from fastapi import Depends, FastAPI, HTTPException, Header, Request
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
-from dotenv import load_dotenv
+from sqlalchemy.orm import Session
 
-from satellite import fetch_ndvi_for_field, fetch_cdi_for_point, geojson_bbox
+from database import get_db
+from models import (
+    CropYear, DemandAggregate, DemandEvent, Farm, FieldProfile,
+    IndicatorValue, Field, ProductLink,
+)
 from scoring import compute_field_profile
 
-load_dotenv()
+# ── Config ────────────────────────────────────────────────────────────────────
 
-SUPABASE_URL = os.getenv("SUPABASE_URL", "")
-SUPABASE_ANON = os.getenv("SUPABASE_ANON", "")
-SUPABASE_SERVICE_KEY = os.getenv("SUPABASE_SERVICE_KEY", "")
+SERVICE_API_KEY = os.environ.get("SERVICE_API_KEY", "")
+WEB_DIR = Path(__file__).parent.parent / "web"
 
 app = FastAPI(
     title="PlanetCare Field API",
-    version="0.1.0",
-    description="Sustainability scoring for agricultural fields — Phase 0 (NOSTRADAMUS/Horizon Europe TRL-4)",
+    version="0.2.0",
+    description="Sustainability scoring for agricultural fields (NOSTRADAMUS / Horizon Europe TRL-4)",
+    docs_url="/docs",
+    redoc_url="/redoc",
 )
 
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
-    allow_methods=["*"],
+    allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
 
-# In-memory job store (Phase 0 — replace with Redis/DB for production)
-_jobs: dict[str, dict] = {}
+
+# ── Auth helpers ──────────────────────────────────────────────────────────────
+
+def require_service_key(authorization: str = Header(None)):
+    """For /api/products and /api/demand-events — called from PlanetCareScan server."""
+    if not authorization or authorization != f"Bearer {SERVICE_API_KEY}":
+        raise HTTPException(status_code=401, detail="Invalid or missing SERVICE_API_KEY")
 
 
-# ──────────────────────────────────────────────
-# Supabase helpers
-# ──────────────────────────────────────────────
-
-def sb_headers(use_service_key: bool = False) -> dict:
-    key = SUPABASE_SERVICE_KEY if use_service_key else SUPABASE_ANON
-    return {
-        "apikey": key,
-        "Authorization": f"Bearer {key}",
-        "Content-Type": "application/json",
-        "Prefer": "return=representation",
-    }
+def get_farmer_email(authorization: str = Header(None)) -> str:
+    """Very simple email-token auth for Phase 0. Replace with magic link in Phase 1."""
+    if not authorization or not authorization.startswith("Bearer "):
+        raise HTTPException(status_code=401, detail="Bearer token required")
+    # For Phase 0 demo: token IS the email (protected by HTTPS + invite-only)
+    # Phase 1: exchange for signed JWT from email link
+    return authorization.split(" ", 1)[1]
 
 
-def sb_headers_authed(token: str) -> dict:
-    return {
-        "apikey": SUPABASE_ANON,
-        "Authorization": f"Bearer {token}",
-        "Content-Type": "application/json",
-        "Prefer": "return=representation",
-    }
-
-
-async def sb_get(path: str, params: dict = None, token: str = None, service: bool = False):
-    headers = sb_headers_authed(token) if token else sb_headers(service)
-    async with httpx.AsyncClient() as client:
-        r = await client.get(f"{SUPABASE_URL}/rest/v1/{path}", headers=headers, params=params, timeout=15)
-        return r
-
-
-async def sb_post(path: str, data: dict, service: bool = False):
-    async with httpx.AsyncClient() as client:
-        r = await client.post(
-            f"{SUPABASE_URL}/rest/v1/{path}",
-            headers=sb_headers(service),
-            json=data,
-            timeout=15,
-        )
-        return r
-
-
-# ──────────────────────────────────────────────
-# Models
-# ──────────────────────────────────────────────
-
-class DemandSignalIn(BaseModel):
-    category: Optional[str] = None
-    region: Optional[str] = None
-    chose_better_field_profile: Optional[bool] = None
-    willingness_to_pay_pct: Optional[float] = None
-    is_panel: bool = False
-    panel_code: Optional[str] = None
-
-
-# ──────────────────────────────────────────────
-# Routes
-# ──────────────────────────────────────────────
+# ── Health ────────────────────────────────────────────────────────────────────
 
 @app.get("/health")
-async def health():
-    return {"status": "ok", "version": "0.1.0"}
+def health():
+    return {"status": "ok", "version": "0.2.0"}
 
 
-@app.get("/products/{gtin}/field-profile")
-async def get_product_field_profile(gtin: str):
-    """Return public field profile linked to a GTIN."""
-    r = await sb_get(
-        "pcf_product_links",
-        params={
-            "gtin": f"eq.{gtin}",
-            "select": "gtin,batch_id,linked_at,pcf_field_profiles!inner(score_total,score_water,score_biodiversity,score_pesticide,method_version,calculated_at,is_public,pcf_crop_years!inner(year,crop_type,pcf_fields!inner(name,area_ha,geometry,pcf_farms!inner(name,region,country))))",
-        },
-        service=True,
-    )
-    if r.status_code != 200 or not r.json():
-        raise HTTPException(status_code=404, detail="No public field profile linked to this GTIN")
+# ── Overview endpoint (main dashboard data) ───────────────────────────────────
 
-    rows = r.json()
-    # Filter public profiles
-    public = [row for row in rows if row.get("pcf_field_profiles", {}).get("is_public")]
-    if not public:
-        raise HTTPException(status_code=404, detail="No public field profile linked to this GTIN")
+@app.get("/api/fields/{field_id}/overview")
+def get_field_overview(
+    field_id: str,
+    season: int = None,
+    db: Session = Depends(get_db),
+    authorization: str = Header(None),
+):
+    """Return overview data matching the PCF_DEMO structure for the frontend."""
+    # /demo path: use first field of demo farm, no auth
+    is_demo = (field_id == "default" or field_id == "demo")
 
-    row = public[0]
-    fp = row["pcf_field_profiles"]
-    cy = fp.get("pcf_crop_years", {})
-    field = cy.get("pcf_fields", {})
-    farm = field.get("pcf_farms", {})
+    if not is_demo:
+        email = get_farmer_email(authorization)
+        field = db.query(Field).join(Farm).filter(
+            Field.id == field_id,
+            Farm.owner_email == email,
+        ).first()
+    else:
+        # Demo: find Musterbetrieb Flachgau
+        demo_farm = db.query(Farm).filter(Farm.name == "Musterbetrieb Flachgau").first()
+        if not demo_farm:
+            raise HTTPException(status_code=404, detail="Demo data not seeded yet")
+        field = db.query(Field).filter(Field.farm_id == demo_farm.id).first()
 
-    return {
-        "gtin": row["gtin"],
-        "batch_id": row.get("batch_id"),
-        "field_profile": {
-            "score_total": fp.get("score_total"),
-            "score_water": fp.get("score_water"),
-            "score_biodiversity": fp.get("score_biodiversity"),
-            "score_pesticide": fp.get("score_pesticide"),
-            "method_version": fp.get("method_version"),
-            "calculated_at": fp.get("calculated_at"),
-        },
-        "region": farm.get("region"),
-        "country": farm.get("country"),
-        "crop_year": cy.get("year"),
-        "crop_type": cy.get("crop_type"),
-    }
-
-
-@app.get("/fields/{field_id}/profile")
-async def get_field_profile(field_id: str, authorization: str = Header(None)):
-    """Return latest field profile. Requires Bearer JWT (Supabase auth)."""
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Bearer token required")
-    token = authorization.split(" ", 1)[1]
-
-    # Get latest crop year for this field
-    r = await sb_get(
-        "pcf_crop_years",
-        params={"field_id": f"eq.{field_id}", "select": "id,year,crop_type", "order": "year.desc", "limit": "1"},
-        token=token,
-    )
-    if r.status_code != 200 or not r.json():
-        raise HTTPException(status_code=404, detail="No crop years found for this field")
-
-    crop_year = r.json()[0]
-
-    # Get latest profile for this crop year
-    r2 = await sb_get(
-        "pcf_field_profiles",
-        params={
-            "crop_year_id": f"eq.{crop_year['id']}",
-            "select": "*",
-            "order": "calculated_at.desc",
-            "limit": "1",
-        },
-        token=token,
-    )
-    if r2.status_code != 200 or not r2.json():
-        raise HTTPException(status_code=404, detail="No profile calculated yet")
-
-    profile = r2.json()[0]
-    return {"field_id": field_id, "crop_year": crop_year, "profile": profile}
-
-
-@app.post("/fields/{field_id}/fetch-satellite")
-async def fetch_satellite(field_id: str, authorization: str = Header(None)):
-    """Trigger async satellite data fetch for a field."""
-    if not authorization or not authorization.startswith("Bearer "):
-        raise HTTPException(status_code=401, detail="Bearer token required")
-    token = authorization.split(" ", 1)[1]
-
-    # Get field geometry
-    r = await sb_get(
-        "pcf_fields",
-        params={"id": f"eq.{field_id}", "select": "id,geometry,name"},
-        token=token,
-    )
-    if r.status_code != 200 or not r.json():
+    if not field:
         raise HTTPException(status_code=404, detail="Field not found")
 
-    field = r.json()[0]
+    farm = field.farm
 
-    # Get latest crop year
-    r2 = await sb_get(
-        "pcf_crop_years",
-        params={"field_id": f"eq.{field_id}", "select": "id,year", "order": "year.desc", "limit": "1"},
-        token=token,
+    # Get seasons
+    crop_years = (
+        db.query(CropYear)
+        .filter(CropYear.field_id == field.id)
+        .order_by(CropYear.year.desc())
+        .all()
     )
-    if r2.status_code != 200 or not r2.json():
-        raise HTTPException(status_code=404, detail="No crop year found for this field")
+    if not crop_years:
+        raise HTTPException(status_code=404, detail="No crop years found")
 
-    crop_year = r2.json()[0]
-    job_id = str(uuid.uuid4())
-    _jobs[job_id] = {"status": "pending", "field_id": field_id}
+    target_year = season or crop_years[0].year
+    cy = next((c for c in crop_years if c.year == target_year), crop_years[0])
 
-    # Run async in background
-    asyncio.create_task(
-        _run_satellite_job(job_id, field["geometry"], crop_year["id"], token)
+    # Get latest profile for this crop year
+    profile = (
+        db.query(FieldProfile)
+        .filter(FieldProfile.crop_year_id == cy.id)
+        .order_by(FieldProfile.calculated_at.desc())
+        .first()
     )
 
-    return {"job_id": job_id, "status": "pending", "field_id": field_id}
+    # Get indicator sources
+    indicators = db.query(IndicatorValue).filter(IndicatorValue.crop_year_id == cy.id).all()
 
+    def source_info(indicator_names):
+        hits = [i for i in indicators if i.indicator in indicator_names]
+        if not hits:
+            return None
+        h = hits[-1]
+        return {"source": h.source or "Sentinel-2", "date": str(h.acquired_at or date.today())}
 
-@app.get("/fields/{field_id}/satellite-status/{job_id}")
-async def satellite_status(field_id: str, job_id: str):
-    """Check status of a satellite fetch job."""
-    job = _jobs.get(job_id)
-    if not job:
-        raise HTTPException(status_code=404, detail="Job not found")
-    return job
-
-
-@app.post("/demand-signal")
-async def post_demand_signal(signal: DemandSignalIn):
-    """Record an anonymous demand signal (no user_id, no session_id)."""
-    today = date.today()
-    week = today.isocalendar()[1]
-    year = today.year
-
-    data = {
-        "category": signal.category,
-        "region": signal.region,
-        "calendar_week": week,
-        "calendar_year": year,
-        "chose_better_field_profile": signal.chose_better_field_profile,
-        "willingness_to_pay_pct": signal.willingness_to_pay_pct,
-        "is_panel": signal.is_panel,
-        "panel_code": signal.panel_code,
-    }
-    r = await sb_post("pcf_demand_signals", data, service=True)
-    if r.status_code not in (200, 201):
-        raise HTTPException(status_code=500, detail="Failed to store signal")
-    return {"ok": True}
-
-
-@app.get("/demand-signal/summary")
-async def demand_signal_summary():
-    """Aggregated summary by category+region (only when >= 20 events)."""
-    r = await sb_get(
-        "pcf_demand_signals",
-        params={"select": "category,region,chose_better_field_profile,willingness_to_pay_pct,is_panel"},
-        service=True,
-    )
-    if r.status_code != 200:
-        raise HTTPException(status_code=500, detail="Failed to fetch signals")
-
-    rows = r.json()
-    # Aggregate
-    from collections import defaultdict
-    groups: dict = defaultdict(list)
-    for row in rows:
-        key = (row.get("category") or "unknown", row.get("region") or "unknown")
-        groups[key].append(row)
-
-    summary = []
-    for (category, region), items in groups.items():
-        n = len(items)
-        if n < 20:
-            continue
-        chose = [i for i in items if i.get("chose_better_field_profile")]
-        wtps = [i["willingness_to_pay_pct"] for i in items if i.get("willingness_to_pay_pct") is not None]
-        wtp_median = sorted(wtps)[len(wtps) // 2] if wtps else None
-        has_panel = any(i.get("is_panel") for i in items)
-        summary.append({
-            "category": category,
-            "region": region,
-            "n_events": n,
-            "preference_rate": round(len(chose) / n, 3),
-            "willingness_to_pay_pct_median": wtp_median,
-            "has_panel_data": has_panel,
-        })
-
-    return {"summary": summary, "total_signals": len(rows)}
-
-
-# ──────────────────────────────────────────────
-# Background job
-# ──────────────────────────────────────────────
-
-async def _run_satellite_job(job_id: str, geometry: dict, crop_year_id: str, token: str):
-    try:
-        _jobs[job_id] = {**_jobs.get(job_id, {}), "status": "running"}
-
-        date_to = date.today().isoformat()
-        date_from = (date.today() - timedelta(days=60)).isoformat()
-
-        ndvi_result = await fetch_ndvi_for_field(geometry, date_from, date_to)
-
-        # Get centroid for CDI
-        try:
-            bbox = geojson_bbox(geometry)
-            lon = (bbox[0] + bbox[2]) / 2
-            lat = (bbox[1] + bbox[3]) / 2
-            cdi_result = await fetch_cdi_for_point(lon, lat)
-        except Exception:
-            cdi_result = {"cdi": 1.0, "source": "fallback"}
-
-        # Store indicators
-        indicators_to_store = []
-        best = ndvi_result.get("best", {})
-        if best and not best.get("error"):
-            acq = best.get("date", date.today().isoformat())
-            indicators_to_store.extend([
-                {
-                    "crop_year_id": crop_year_id,
-                    "indicator": "ndvi_mean",
-                    "value": best["ndvi_mean"],
-                    "unit": "index",
-                    "source": "sentinel2",
-                    "acquired_at": acq,
-                    "method_version": "1.0",
-                },
-                {
-                    "crop_year_id": crop_year_id,
-                    "indicator": "ndvi_std",
-                    "value": best["ndvi_std"],
-                    "unit": "index",
-                    "source": "sentinel2",
-                    "acquired_at": acq,
-                    "method_version": "1.0",
-                },
-            ])
-
-        indicators_to_store.append({
-            "crop_year_id": crop_year_id,
-            "indicator": "cdi",
-            "value": cdi_result.get("cdi", 1.0),
-            "unit": "class",
-            "source": cdi_result.get("source", "copernicus"),
-            "acquired_at": date.today().isoformat(),
-            "method_version": "1.0",
-        })
-
-        # Batch insert
-        headers = sb_headers(use_service_key=True)
-        async with httpx.AsyncClient() as client:
-            for ind in indicators_to_store:
-                await client.post(
-                    f"{SUPABASE_URL}/rest/v1/pcf_indicator_values",
-                    headers=headers,
-                    json=ind,
-                    timeout=10,
-                )
-
-            # Compute & store profile
-            profile_scores = compute_field_profile(
-                [{"indicator": i["indicator"], "value": i["value"]} for i in indicators_to_store]
-            )
-            profile_data = {
-                "crop_year_id": crop_year_id,
-                **{k: v for k, v in profile_scores.items() if k.startswith("score_") or k == "method_version"},
-                "is_public": False,
-            }
-            await client.post(
-                f"{SUPABASE_URL}/rest/v1/pcf_field_profiles",
-                headers=headers,
-                json=profile_data,
-                timeout=10,
-            )
-
-        _jobs[job_id] = {
-            "status": "done",
-            "ndvi": best,
-            "cdi": cdi_result,
-            "indicators_stored": len(indicators_to_store),
-            "profile": profile_scores,
+    def score_block(score_val, indicator_names):
+        if score_val is None:
+            return {"available": False}
+        si = source_info(indicator_names)
+        return {
+            "available": True,
+            "value": round(float(score_val)),
+            "source": si["source"] if si else "Methodik v1.0",
+            "date": si["date"] if si else str(date.today()),
         }
 
-    except Exception as e:
-        _jobs[job_id] = {"status": "error", "error": str(e)}
+    # Build series from indicator history
+    series = _build_series(db, field.id, crop_years)
+
+    # Area from geometry
+    from geoalchemy2.shape import to_shape
+    try:
+        shape = to_shape(field.geom)
+        from pyproj import Geod
+        geod = Geod(ellps="WGS84")
+        area_ha = round(abs(geod.geometry_area_perimeter(shape)[0]) / 10000, 1)
+    except Exception:
+        area_ha = float(field.area_ha or 0)
+
+    seasons_list = [
+        {"value": f"{field.id}:{c.year}", "label": f"{c.crop_type or 'Anbau'} {c.year}"}
+        for c in crop_years
+    ]
+
+    hint = None
+    if profile and profile.score_biodiversity and float(profile.score_biodiversity) < 40:
+        hint = "Die Bodenvielfalt liegt unter dem regionalen Durchschnitt. Mögliche Ursachen: hohe Homogenität der Vegetation, geringe Randstrukturen."
+
+    result = {
+        "farm": {"name": farm.name, "region": farm.region or ""},
+        "field": {
+            "id": str(field.id),
+            "name": field.name or "Schlag",
+            "subtitle": f"{farm.region} · {cy.crop_type or 'Anbau'} · {area_ha} ha · Saison {cy.year}",
+        },
+        "seasons": seasons_list,
+        "fields": seasons_list,  # alias for field selector
+        "scores": {
+            "total": score_block(profile.score_total if profile else None, ["ndvi_mean", "cdi"]),
+            "water": score_block(profile.score_water if profile else None, ["ndvi_mean", "cdi"]),
+            "soil":  score_block(profile.score_biodiversity if profile else None, ["ndvi_std"]),
+            "protection": score_block(profile.score_pesticide if profile else None, ["pesticide"]),
+        },
+        "hint": hint,
+        "series": series,
+        "methodology": {
+            "version": profile.method_version if profile else "1.0",
+            "calculated_at": str(profile.calculated_at.date() if profile and profile.calculated_at else date.today()),
+            "sources": "Copernicus Sentinel-2, EDO CDI",
+        },
+    }
+    return result
+
+
+def _build_series(db, field_id, crop_years):
+    """Build time-series data for the trend chart."""
+    series = []
+    for cy in reversed(crop_years[-3:]):  # last 3 seasons
+        profile = (
+            db.query(FieldProfile)
+            .filter(FieldProfile.crop_year_id == cy.id)
+            .order_by(FieldProfile.calculated_at.desc())
+            .first()
+        )
+        if profile:
+            series.append({
+                "label": str(cy.year),
+                "water": round(float(profile.score_water)) if profile.score_water else None,
+                "soil": round(float(profile.score_biodiversity)) if profile.score_biodiversity else None,
+                "protection": round(float(profile.score_pesticide)) if profile.score_pesticide else None,
+                "total": round(float(profile.score_total)) if profile.score_total else None,
+            })
+    return series
+
+
+# ── Field list ────────────────────────────────────────────────────────────────
+
+@app.get("/api/fields")
+def list_fields(db: Session = Depends(get_db), authorization: str = Header(None)):
+    email = get_farmer_email(authorization)
+    farm = db.query(Farm).filter(Farm.owner_email == email).first()
+    if not farm:
+        return {"fields": []}
+    fields = db.query(Field).filter(Field.farm_id == farm.id).all()
+    return {"fields": [{"id": str(f.id), "name": f.name} for f in fields]}
+
+
+# ── Product field-profile (for PlanetCareScan server) ────────────────────────
+
+@app.get("/api/products/{gtin}/field-profile", dependencies=[Depends(require_service_key)])
+def get_product_field_profile(gtin: str, db: Session = Depends(get_db)):
+    link = (
+        db.query(ProductLink)
+        .join(FieldProfile)
+        .filter(ProductLink.gtin == gtin, FieldProfile.is_public == True)
+        .order_by(FieldProfile.calculated_at.desc())
+        .first()
+    )
+    if not link:
+        raise HTTPException(status_code=404, detail="No public field profile linked to this GTIN")
+
+    fp = link.profile
+    cy = fp.crop_year
+    field = cy.field
+    farm = field.farm
+
+    return {
+        "gtin": gtin,
+        "verified": True,
+        "profileScore": round(float(fp.score_total)) if fp.score_total else None,
+        "scores": {
+            "water": round(float(fp.score_water)) if fp.score_water else None,
+            "soil": round(float(fp.score_biodiversity)) if fp.score_biodiversity else None,
+            "protection": round(float(fp.score_pesticide)) if fp.score_pesticide else None,
+        },
+        "region": farm.region,
+        "harvestYear": cy.year,
+        "methodology": fp.method_version or "v1.0",
+    }
+
+
+# ── Demand events (from PlanetCareScan server) ────────────────────────────────
+
+class DemandEventIn(BaseModel):
+    events: list[dict]
+
+
+@app.post("/api/demand-events", dependencies=[Depends(require_service_key)])
+def post_demand_events(body: DemandEventIn, db: Session = Depends(get_db)):
+    stored = 0
+    for e in body.events:
+        ev = DemandEvent(
+            event_type=e.get("type", "unknown"),
+            gtin=e.get("gtin"),
+            compared_with=json.dumps(e.get("comparedWith", [])),
+            category=e.get("category"),
+            region=e.get("region"),
+            calendar_week=e.get("week"),
+            panel=e.get("panel", False),
+            willingness_to_pay=e.get("wtpPct"),
+        )
+        db.add(ev)
+        stored += 1
+    db.commit()
+    return {"ok": True, "stored": stored}
+
+
+# ── Market signal (dashboard) ─────────────────────────────────────────────────
+
+@app.get("/api/market-signal")
+def get_market_signal(region: str = None, category: str = None, db: Session = Depends(get_db)):
+    q = db.query(DemandAggregate)
+    if region:
+        q = q.filter(DemandAggregate.region == region)
+    if category:
+        q = q.filter(DemandAggregate.category == category)
+    rows = q.order_by(DemandAggregate.updated_at.desc()).limit(50).all()
+    return {
+        "results": [
+            {
+                "category": r.category,
+                "region": r.region,
+                "calendar_week": r.calendar_week,
+                "n_events": r.n_events,
+                "preference_rate": float(r.preference_rate) if r.preference_rate else None,
+                "wtp_median": float(r.wtp_median) if r.wtp_median else None,
+                "has_panel": r.has_panel,
+            }
+            for r in rows
+        ]
+    }
+
+
+# ── Serve frontend ────────────────────────────────────────────────────────────
+
+if WEB_DIR.exists():
+    app.mount("/static", StaticFiles(directory=str(WEB_DIR)), name="static")
+
+    @app.get("/demo", response_class=HTMLResponse)
+    @app.get("/dashboard", response_class=HTMLResponse)
+    async def serve_app(request: Request):
+        return (WEB_DIR / "index.html").read_text()
+
+    @app.get("/", response_class=HTMLResponse)
+    async def root(request: Request):
+        return (WEB_DIR / "index.html").read_text()

@@ -1,0 +1,44 @@
+/* PlanetCare Field: Design Tokens (Design Korrektur v1, 04.10.2026)
+   Alle Farben, Schriften und Abstände der App kommen aus diesen Variablen. */
+
+:root {
+  /* Farben */
+  --bg: #FFFFFF;
+  --surface: #F6F7F5;
+  --border: #E2E5E0;
+  --text: #1F2A24;
+  --text-muted: #5F6B64;
+  --brand: #1F5A3A;
+  --brand-soft: #E8F0EA;
+  --good: #2E7D4F;
+  --medium: #B7791F;
+  --critical: #B42318;
+
+  /* Linien im Verlaufsdiagramm (Teilwerte bewusst zurückhaltend) */
+  --series-water: #5F6B64;
+  --series-soil: #8A948E;
+  --series-protection: #3E4A43;
+  --grid: #EEF0ED;
+
+  /* Schrift */
+  --font: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  --fs-kpi: 36px;
+  --fs-title: 20px;
+  --fs-label: 14px;
+  --fs-body: 14px;
+  --fs-small: 13px;
+  --fs-meta: 12px;
+
+  /* Abstände (8 px Raster) */
+  --s1: 4px;
+  --s2: 8px;
+  --s3: 12px;
+  --s4: 16px;
+  --s5: 20px;
+  --s6: 24px;
+  --s8: 32px;
+
+  --radius: 8px;
+  --max-width: 1200px;
+  --header-h: 64px;
+}
