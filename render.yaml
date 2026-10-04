@@ -6,7 +6,6 @@ services:
     dockerfilePath: ./api/Dockerfile
     dockerContext: .
     healthCheckPath: /health
-    plan: starter
     envVars:
       - key: DATABASE_URL
         fromDatabase:
@@ -45,4 +44,3 @@ databases:
     region: frankfurt
     postgresMajorVersion: "16"
     databaseName: planetcare_field
-    plan: starter
