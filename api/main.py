@@ -312,7 +312,6 @@ def get_market_signal(region: str = None, category: str = None, db: Session = De
 # ── Serve frontend ────────────────────────────────────────────────────────────
 
 if WEB_DIR.exists():
-    # HTML-Routen zuerst registrieren, DANN static mounten
     @app.get("/demo", response_class=HTMLResponse)
     @app.get("/dashboard", response_class=HTMLResponse)
     async def serve_app(request: Request):
@@ -322,5 +321,34 @@ if WEB_DIR.exists():
     async def root(request: Request):
         return (WEB_DIR / "index.html").read_text()
 
-    # Static Files auf Root mounten damit styles/tokens.css, js/icons.js etc. direkt erreichbar sind
-    app.mount("/", StaticFiles(directory=str(WEB_DIR), html=True), name="static")
+    # Statische Dateien: styles/, js/, data/, manifest.json etc.
+    # Explizite Routen für Unterordner damit /api/* nicht überschrieben wird
+    from fastapi.responses import FileResponse as FR
+
+    @app.get("/styles/{path:path}")
+    async def serve_styles(path: str):
+        f = WEB_DIR / "styles" / path
+        if f.exists():
+            return FR(str(f))
+        raise HTTPException(status_code=404)
+
+    @app.get("/js/{path:path}")
+    async def serve_js(path: str):
+        f = WEB_DIR / "js" / path
+        if f.exists():
+            return FR(str(f))
+        raise HTTPException(status_code=404)
+
+    @app.get("/data/{path:path}")
+    async def serve_data(path: str):
+        f = WEB_DIR / "data" / path
+        if f.exists():
+            return FR(str(f))
+        raise HTTPException(status_code=404)
+
+    @app.get("/manifest.json")
+    async def serve_manifest():
+        f = WEB_DIR / "manifest.json"
+        if f.exists():
+            return FR(str(f))
+        raise HTTPException(status_code=404)
