@@ -312,8 +312,7 @@ def get_market_signal(region: str = None, category: str = None, db: Session = De
 # ── Serve frontend ────────────────────────────────────────────────────────────
 
 if WEB_DIR.exists():
-    app.mount("/static", StaticFiles(directory=str(WEB_DIR)), name="static")
-
+    # HTML-Routen zuerst registrieren, DANN static mounten
     @app.get("/demo", response_class=HTMLResponse)
     @app.get("/dashboard", response_class=HTMLResponse)
     async def serve_app(request: Request):
@@ -322,3 +321,6 @@ if WEB_DIR.exists():
     @app.get("/", response_class=HTMLResponse)
     async def root(request: Request):
         return (WEB_DIR / "index.html").read_text()
+
+    # Static Files auf Root mounten damit styles/tokens.css, js/icons.js etc. direkt erreichbar sind
+    app.mount("/", StaticFiles(directory=str(WEB_DIR), html=True), name="static")
