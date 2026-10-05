@@ -50,6 +50,11 @@ def run():
                 area_ha=area,
                 geom={"type": "Polygon", "coordinates": [coords]},
             )
+            # region_code für AT-5 (Salzburg) setzen falls Spalte vorhanden
+            try:
+                f.region_code = "AT-5"
+            except Exception:
+                pass
             db.add(f)
             db.flush()
 

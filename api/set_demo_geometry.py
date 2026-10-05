@@ -66,7 +66,11 @@ try:
         if field:
             field.geom = geom
             field.area_ha = calc_area_ha(geom["coordinates"])
-            print(f"  {name}: {field.area_ha} ha gesetzt")
+            try:
+                field.region_code = "AT-5"
+            except Exception:
+                pass
+            print(f"  {name}: {field.area_ha} ha gesetzt, region_code=AT-5")
         else:
             print(f"  {name} nicht gefunden (ID: {field_id})")
     db.commit()

@@ -9,12 +9,14 @@ from datetime import date, datetime, timedelta
 from pathlib import Path
 from typing import Optional
 
-from fastapi import Depends, FastAPI, HTTPException, Header, Request
+from fastapi import Depends, FastAPI, HTTPException, Header, Request, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 from sqlalchemy.orm import Session
+import time
+import collections
 
 from database import get_db
 from models import (
@@ -43,6 +45,39 @@ app.add_middleware(
     allow_methods=["GET", "POST"],
     allow_headers=["*"],
 )
+
+# ── Security Headers ──────────────────────────────────────────────────────────
+
+@app.middleware("http")
+async def security_headers(request: Request, call_next):
+    response = await call_next(request)
+    response.headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains"
+    response.headers["X-Content-Type-Options"] = "nosniff"
+    response.headers["X-Frame-Options"] = "DENY"
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "style-src 'self' 'unsafe-inline'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "img-src 'self' data:; "
+        "font-src 'self'; "
+        "connect-src 'self'"
+    )
+    return response
+
+# ── Rate Limiting für /api/demand-events ─────────────────────────────────────
+
+_rate_buckets: dict = collections.defaultdict(list)
+RATE_LIMIT = 60  # Anfragen pro Minute je IP
+
+def check_rate_limit(request: Request):
+    ip = request.client.host if request.client else "unknown"
+    now = time.time()
+    bucket = _rate_buckets[ip]
+    # Alte Einträge löschen (älter als 60s)
+    _rate_buckets[ip] = [t for t in bucket if now - t < 60]
+    if len(_rate_buckets[ip]) >= RATE_LIMIT:
+        raise HTTPException(status_code=429, detail="Rate limit exceeded (60/min)")
+    _rate_buckets[ip].append(now)
 
 
 # ── Auth helpers ──────────────────────────────────────────────────────────────
@@ -314,7 +349,7 @@ class DemandEventIn(BaseModel):
     events: list[dict]
 
 
-@app.post("/api/demand-events", dependencies=[Depends(require_service_key)])
+@app.post("/api/demand-events", dependencies=[Depends(require_service_key), Depends(check_rate_limit)])
 def post_demand_events(body: DemandEventIn, db: Session = Depends(get_db)):
     stored = 0
     for e in body.events:
