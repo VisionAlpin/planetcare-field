@@ -1,4 +1,4 @@
-"""PlanetCare Field — FastAPI Backend v0.4.0
+"""PlanetCare Field — FastAPI Backend v0.4.1
 Render PostgreSQL (SQLAlchemy) statt Supabase.
 """
 
@@ -31,7 +31,7 @@ WEB_DIR = Path(__file__).parent.parent / "web"
 
 app = FastAPI(
     title="PlanetCare Field API",
-    version="0.4.0",
+    version="0.4.1",
     description="Sustainability scoring for agricultural fields (NOSTRADAMUS / Horizon Europe TRL-4)",
     docs_url="/docs",
     redoc_url="/redoc",
@@ -82,7 +82,7 @@ def health(db: Session = Depends(get_db)):
             }
     except Exception:
         pass
-    return {"status": "ok", "version": "0.4.0", "lastJobRun": last_run}
+    return {"status": "ok", "version": "0.4.1", "lastJobRun": last_run}
 
 
 # ── Overview endpoint (main dashboard data) ───────────────────────────────────
@@ -400,6 +400,21 @@ if WEB_DIR.exists():
     @app.get("/manifest.json")
     async def serve_manifest():
         f = WEB_DIR / "manifest.json"
+        if f.exists():
+            return FR(str(f), media_type="application/manifest+json")
+        raise HTTPException(status_code=404)
+
+    @app.get("/favicon.ico", include_in_schema=False)
+    async def serve_favicon():
+        f = WEB_DIR / "favicon.ico"
+        if f.exists():
+            return FR(str(f), media_type="image/x-icon",
+                      headers={"Cache-Control": "public, max-age=604800"})
+        raise HTTPException(status_code=404)
+
+    @app.get("/icons/{path:path}")
+    async def serve_icons(path: str):
+        f = WEB_DIR / "icons" / path
         if f.exists():
             return FR(str(f))
         raise HTTPException(status_code=404)
