@@ -15,4 +15,5 @@ WORKDIR /app/api
 
 CMD alembic upgrade head && \
     python seed_demo.py && \
+    python set_demo_geometry.py && \
     uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
