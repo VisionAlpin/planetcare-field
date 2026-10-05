@@ -1,17 +1,18 @@
 # Changelog
 
-## 0.3.0 (5. Oktober 2026)
-
-### Behoben
-- Fehlende Vergleichswerte wurden als 0 gerechnet („+78 zum Vorjahr“, „Region Ø 0“). Jetzt werden fehlende Werte ausgeblendet; das Backend liefert die Vorsaison mit.
-- Technische Quellenschlüssel (z. B. `copernicus_gdo`) werden als Anzeigenamen gezeigt.
-- Verlauf zeigt nur Messungen der aktuellen Saison; unter 3 Messungen ein erklärender Hinweis statt einer irreführenden Linie.
-- Methodikversion einheitlich „v1.0“.
+## 0.4.0 (5. Oktober 2026)
 
 ### Neu
-- Hinweiszeile wird per Regel erzeugt, wenn das Backend keinen Hinweis liefert.
-- Werte älter als 14 Tage sind als „veraltet“ gekennzeichnet.
-- Fußzeile mit Impressum und Datenschutz.
-- Frontend lädt live von der API, offline mit Demo Daten.
-- Backend: `scoring.py` (Bewertung, Vorsaison, Region ab 3 Schlägen, Hinweis, Boden und Pflanzenschutz nach Konzept) und `schemas.py` (Pydantic Antwortmodelle, Bearer Schema für die Verbraucher App).
-- 10 Tests für die Bewertungslogik.
+- Nachtjob `pcf-jobs`: lädt je Schlag NDVI (Sentinel 2, Statistical API des CDSE, mit Wolkenmaske) und Tageswetter (ERA5-Land) und berechnet die Teilwerte alle 10 Tage seit Saisonbeginn.
+- Teilwerte nach Konzept: Wasser (Vitalität in Trockenphasen), Boden (Tage mit grüner Bedeckung), Pflanzenschutz (gezielte Behandlungen bei Risikowetter).
+- Tabellen `indicator_values`, `score_snapshots`, `job_runs`.
+- `overview_queries.py`: Verlauf, Vorjahr und regionaler Vergleich aus den Stichtagen; `/health` mit letztem Joblauf.
+- Werkzeug `set_field_geometry` mit Plausibilitätsprüfung (DACH, 0,5 bis 100 ha).
+- Ein fehlerhafter Schlag stoppt den Lauf nicht; Exit Code 1 nur bei Totalausfall, damit Render benachrichtigt.
+- 22 Tests (10 Job, 12 API).
+
+### Enthalten
+- Alle Änderungen aus 0.3.0.
+
+## 0.3.0 (5. Oktober 2026)
+- Fehlende Vergleichswerte werden ausgeblendet statt als 0 gerechnet; Quellen als Anzeigenamen; Verlauf nur aktuelle Saison; Hinweiszeile; „veraltet“ Markierung; Impressum und Datenschutz; Pydantic Schemas und Bearer Schema.

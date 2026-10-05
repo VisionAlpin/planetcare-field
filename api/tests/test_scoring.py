@@ -105,3 +105,39 @@ def test_pflanzenschutz():
     assert protection_score([], risk) == 100
     assert protection_score([date(2026, 5, 11), date(2026, 7, 20)], risk) == 50
     assert protection_score([date(2026, 6, 1)], risk) == 100
+
+
+def test_wasser_resilienz():
+    from app.scoring import water_resilience_score
+    assert water_resilience_score([], [0.6, 0.7, 0.8]) == 100
+    assert round(water_resilience_score([0.56], [0.8], min_reference=1)) == 0         # 30 % Einbruch
+    assert round(water_resilience_score([0.68], [0.8], min_reference=1)) == 50  # 15 % Einbruch
+    assert water_resilience_score([0.5], [0.8, 0.7]) is None                    # zu wenig Vergleichswerte
+
+
+def test_overview_queries_mit_snapshots():
+    from datetime import date
+    from app.overview_queries import scores_and_series, previous_scores
+    from app.scoring import finalize_overview
+
+    class Cur:
+        def __init__(self, rows): self.rows = rows
+        def __enter__(self): return self
+        def __exit__(self, *a): pass
+        def execute(self, sql, params): self.sql = sql
+        def fetchall(self): return self.rows
+        def fetchone(self): return self.rows[0] if self.rows else None
+
+    class Conn:
+        def __init__(self, rows): self.rows = rows
+        def cursor(self): return Cur(self.rows)
+
+    rows = [(date(2026, 9, d), 70.0 + d / 10, 60.0, None, '{"water":"sentinel2_era5","soil":"sentinel2"}', '{"water":"2026-09-03","soil":"2026-09-03"}') for d in (1, 11, 21)]
+    scores, series = scores_and_series(Conn(rows), "f1", 2026)
+    assert len(series) == 3 and scores["water"]["date"] == "2026-09-03" and scores["protection"]["available"] is False
+    prev = previous_scores(Conn([(74.0, 52.0, None)]), "f1", 2025)
+    assert prev == {"water": 74.0, "soil": 52.0}
+    raw = dict(LIVE, scores=scores, series=series)
+    out = finalize_overview(raw, prev, {})
+    assert out["scores"]["water"]["source"] == "Sentinel 2 + ERA5"
+    assert out["scores"]["water"]["previousSeason"] == 74.0 and out["total"]["available"] is True
