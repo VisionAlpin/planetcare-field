@@ -183,11 +183,14 @@ def field_profile(conn, gtin: str, today: Optional[date] = None) -> Optional[Fie
 
 
 def store_events(conn, batch: DemandEventBatch) -> int:
+    import json as _json
     with conn.cursor() as cur:
         cur.executemany(
             "INSERT INTO pcf_demand_events (type, gtin, compared_with, verified, compared_verified, category, region, week, panel, value) "
             "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-            [(e.type, e.gtin, e.comparedWith, e.verified, e.comparedVerified, e.category, e.region, e.week, e.panel, e.value) for e in batch.events],
+            [(e.type, e.gtin, _json.dumps(e.comparedWith), e.verified,
+              _json.dumps(e.comparedVerified), e.category, e.region, e.week, e.panel, e.value)
+             for e in batch.events],
         )
     conn.commit()
     return len(batch.events)
