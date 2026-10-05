@@ -350,3 +350,8 @@ main { padding: var(--s6) 0 var(--s8); }
 }
 .app-footer .legal { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4); margin-top: var(--s2); }
 .app-footer .legal a { color: var(--text-muted); font-weight: 400; }
+
+/* v0.4.1: Logo */
+.brand { display: inline-flex; align-items: center; gap: var(--s2); text-decoration: none; }
+.brand:hover { text-decoration: none; }
+.brand-mark { width: 28px; height: 28px; display: block; }
