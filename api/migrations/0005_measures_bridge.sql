@@ -22,7 +22,7 @@ CREATE INDEX IF NOT EXISTS pcf_measures_field_day_idx ON pcf_measures (field_id,
 -- ---------------------------------------------------------------
 -- 2. Lieferkette: Charge, freigegebene Schläge, Produkte (GTIN)
 -- ---------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS batches (
+CREATE TABLE IF NOT EXISTS pcf_batches (
     id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
     label        text NOT NULL,                 -- z. B. "Weizen Ernte 2026, Lager 3"
     buyer        text NOT NULL,                 -- Genossenschaft oder Mühle
@@ -33,8 +33,8 @@ CREATE TABLE IF NOT EXISTS batches (
 );
 
 -- Ein Schlag zählt nur mit Freigabe des Betriebs (consent_at gesetzt, nicht widerrufen)
-CREATE TABLE IF NOT EXISTS batch_fields (
-    batch_id    uuid NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
+CREATE TABLE IF NOT EXISTS pcf_batch_fields (
+    batch_id    uuid NOT NULL REFERENCES pcf_batches(id) ON DELETE CASCADE,
     field_id    uuid NOT NULL REFERENCES pcf_fields(id) ON DELETE CASCADE,
     share       double precision NOT NULL CHECK (share > 0 AND share <= 1),  -- Mengenanteil an der Charge
     consent_at  timestamptz,
@@ -42,19 +42,19 @@ CREATE TABLE IF NOT EXISTS batch_fields (
     PRIMARY KEY (batch_id, field_id)
 );
 
-CREATE TABLE IF NOT EXISTS product_batches (
+CREATE TABLE IF NOT EXISTS pcf_product_batches (
     gtin        text NOT NULL,
-    batch_id    uuid NOT NULL REFERENCES batches(id) ON DELETE CASCADE,
+    batch_id    uuid NOT NULL REFERENCES pcf_batches(id) ON DELETE CASCADE,
     valid_from  date NOT NULL DEFAULT current_date,
     valid_to    date,
     PRIMARY KEY (gtin, batch_id)
 );
-CREATE INDEX IF NOT EXISTS product_batches_gtin_idx ON product_batches (gtin);
+CREATE INDEX IF NOT EXISTS pcf_product_batches_gtin_idx ON pcf_product_batches (gtin);
 
 -- ---------------------------------------------------------------
 -- 3. Nachfragesignale aus der Verbraucher App (anonym, ohne Nutzer ID)
 -- ---------------------------------------------------------------
-CREATE TABLE IF NOT EXISTS demand_events (
+CREATE TABLE IF NOT EXISTS pcf_demand_events (
     id                bigserial PRIMARY KEY,
     type              text NOT NULL,            -- scan | compare | compare_choice | filter_verified | survey_wtp
     gtin              text,
@@ -68,4 +68,4 @@ CREATE TABLE IF NOT EXISTS demand_events (
     value             double precision,         -- survey_wtp: Aufpreis in Prozent
     received_at       timestamptz NOT NULL DEFAULT now()
 );
-CREATE INDEX IF NOT EXISTS demand_events_cat_region_week_idx ON demand_events (category, region, week);
+CREATE INDEX IF NOT EXISTS pcf_demand_events_cat_region_week_idx ON pcf_demand_events (category, region, week);
