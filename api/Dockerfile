@@ -13,7 +13,8 @@ COPY . .
 
 WORKDIR /app/api
 
-CMD alembic upgrade head && \
+CMD alembic upgrade head 2>&1 && \
+    python -c "from sqlalchemy.orm import configure_mappers; import models; configure_mappers(); print('mapper OK')" && \
     python seed_demo.py && \
     python set_demo_geometry.py && \
     uvicorn main:app --host 0.0.0.0 --port ${PORT:-8000}
