@@ -114,7 +114,7 @@
     if (!data.available) {
       body =
         '<div class="kpi-empty">Noch keine Daten</div>' +
-        (id === "protection" ? '<div class="kpi-compare"><a href="#behandlungen">Behandlungen eintragen</a></div>' : "");
+        (id === "protection" ? '<div class="kpi-compare"><a href="#behandlungen" data-open-measures>Behandlungen eintragen</a></div>' : "");
     } else {
       const v = Math.round(data.value);
       const r = rating(v);
@@ -149,6 +149,7 @@
       '<button class="icon-button info-btn" type="button" aria-label="Erklärung zu ' + esc(label) + '" aria-expanded="false" aria-controls="' + popId + '">' + icon("info") + "</button>" +
       "</div>" +
       body +
+      (id === "protection" && data.available ? '<div class="kpi-action"><a href="#behandlungen" data-open-measures>Behandlungen ansehen</a></div>' : "") +
       (sourceLine ? '<div class="kpi-source' + (stale ? " is-stale" : "") + '">' + esc(sourceLine) + (stale ? ' <span class="stale-tag">veraltet</span>' : "") + "</div>" : "") +
       '<div class="popover" id="' + popId + '" role="dialog" aria-label="' + esc(label) + '" hidden>' +
       "<p>" + esc(data.explanation || "") + "</p>" +
@@ -369,6 +370,7 @@
   /* ---------- Gesamte Seite ---------- */
 
   function renderOverview(d) {
+    window.PCF_CURRENT = { fieldId: d.field.id, fieldName: d.field.name, season: d.field.season };
     const ha = areaHa(d.field.geometry).toLocaleString("de-AT", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
     document.querySelector("[data-farm-name]").textContent = d.farm.name;
@@ -433,5 +435,5 @@
     return res.json();
   }
 
-  window.PlanetCareField = { renderOverview, loadOverview, computeTotal, rating, areaHa, deriveHint, VERSION: "0.3.0" };
+  window.PlanetCareField = { renderOverview, loadOverview, computeTotal, rating, areaHa, deriveHint, VERSION: "0.5.0" };
 })();

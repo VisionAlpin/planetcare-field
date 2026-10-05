@@ -9,9 +9,12 @@
   <link rel="icon" href="icons/favicon.svg" type="image/svg+xml" />
   <link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
   <link rel="manifest" href="manifest.json" />
-  <link rel="stylesheet" href="/fonts/inter.css" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
   <link rel="stylesheet" href="styles/tokens.css" />
   <link rel="stylesheet" href="styles/overview.css" />
+  <link rel="stylesheet" href="styles/measures.css" />
 </head>
 <body>
   <header class="app-header">
@@ -89,9 +92,59 @@
     </div>
   </footer>
 
+
+  <dialog class="dialog" id="measures-dialog" aria-labelledby="measures-title">
+    <div class="dialog-head">
+      <h2 id="measures-title" data-measures-title>Behandlungen</h2>
+      <button class="icon-button" type="button" data-close aria-label="Schließen">
+        <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+    </div>
+    <div class="dialog-body">
+      <p class="readonly-note" data-readonly-note hidden>In der Demo können keine Behandlungen eingetragen werden.</p>
+      <form novalidate>
+        <div class="form-grid">
+          <div class="field">
+            <label for="m-day">Datum</label>
+            <input id="m-day" name="day" type="date" required />
+          </div>
+          <div class="field">
+            <label for="m-kind">Art</label>
+            <select id="m-kind" name="kind" required>
+              <option value="fungizid">Fungizid</option>
+              <option value="herbizid">Herbizid</option>
+              <option value="insektizid">Insektizid</option>
+              <option value="wachstumsregler">Wachstumsregler</option>
+            </select>
+          </div>
+          <div class="field full">
+            <label for="m-product">Mittel (optional)</label>
+            <input id="m-product" name="product" type="text" maxlength="120" autocomplete="off" />
+          </div>
+          <div class="field full">
+            <label for="m-amount">Menge (optional)</label>
+            <div class="amount-row">
+              <input id="m-amount" name="amount" type="text" inputmode="decimal" placeholder="z. B. 1,5" />
+              <select name="unit" aria-label="Einheit">
+                <option value="l/ha">l/ha</option>
+                <option value="kg/ha">kg/ha</option>
+                <option value="g/ha">g/ha</option>
+              </select>
+            </div>
+          </div>
+        </div>
+        <div class="form-actions"><button class="btn-primary" type="submit">Speichern</button></div>
+      </form>
+      <p class="measures-msg" data-measures-msg role="status"></p>
+      <h3 class="measures-section-title">Diese Saison</h3>
+      <div data-measures-list></div>
+    </div>
+  </dialog>
+
   <script src="js/icons.js"></script>
   <script src="data/demo-data.js"></script>
   <script src="js/overview.js"></script>
+  <script src="js/measures.js"></script>
   <script>
     // Tab Symbole einsetzen (nur in der mobilen Leiste sichtbar)
     document.querySelectorAll("[data-icon]").forEach((el) => { el.outerHTML = icon(el.dataset.icon); });
