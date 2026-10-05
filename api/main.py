@@ -1,4 +1,4 @@
-"""PlanetCare Field — FastAPI Backend v0.4.1
+"""PlanetCare Field — FastAPI Backend v0.5.0
 Render PostgreSQL (SQLAlchemy) statt Supabase.
 """
 
@@ -33,7 +33,7 @@ WEB_DIR = Path(__file__).parent.parent / "web"
 
 app = FastAPI(
     title="PlanetCare Field API",
-    version="0.4.1",
+    version="0.5.0",
     description="Sustainability scoring for agricultural fields (NOSTRADAMUS / Horizon Europe TRL-4)",
     docs_url="/docs",
     redoc_url="/redoc",
@@ -117,7 +117,7 @@ def health(db: Session = Depends(get_db)):
             }
     except Exception:
         pass
-    return {"status": "ok", "version": "0.4.1", "lastJobRun": last_run}
+    return {"status": "ok", "version": "0.5.0", "lastJobRun": last_run}
 
 
 # ── Overview endpoint (main dashboard data) ───────────────────────────────────
@@ -309,90 +309,12 @@ def list_fields(db: Session = Depends(get_db), authorization: str = Header(None)
     return {"fields": [{"id": str(f.id), "name": f.name} for f in fields]}
 
 
-# ── Product field-profile (for PlanetCareScan server) ────────────────────────
+# ── Behandlungen + Bridge zur Verbraucher App (v0.5.0) ───────────────────────
+from .app.measures import router as measures_router
+from .app.bridge import router as bridge_router
 
-@app.get("/api/products/{gtin}/field-profile", dependencies=[Depends(require_service_key)])
-def get_product_field_profile(gtin: str, db: Session = Depends(get_db)):
-    link = (
-        db.query(ProductLink)
-        .join(FieldProfile)
-        .filter(ProductLink.gtin == gtin, FieldProfile.is_public == True)
-        .order_by(FieldProfile.calculated_at.desc())
-        .first()
-    )
-    if not link:
-        raise HTTPException(status_code=404, detail="No public field profile linked to this GTIN")
-
-    fp = link.profile
-    cy = fp.crop_year
-    field = cy.field
-    farm = field.farm
-
-    return {
-        "gtin": gtin,
-        "verified": True,
-        "profileScore": round(float(fp.score_total)) if fp.score_total else None,
-        "scores": {
-            "water": round(float(fp.score_water)) if fp.score_water else None,
-            "soil": round(float(fp.score_biodiversity)) if fp.score_biodiversity else None,
-            "protection": round(float(fp.score_pesticide)) if fp.score_pesticide else None,
-        },
-        "region": farm.region,
-        "harvestYear": cy.year,
-        "methodology": fp.method_version or "v1.0",
-    }
-
-
-# ── Demand events (from PlanetCareScan server) ────────────────────────────────
-
-class DemandEventIn(BaseModel):
-    events: list[dict]
-
-
-@app.post("/api/demand-events", dependencies=[Depends(require_service_key), Depends(check_rate_limit)])
-def post_demand_events(body: DemandEventIn, db: Session = Depends(get_db)):
-    stored = 0
-    for e in body.events:
-        ev = DemandEvent(
-            event_type=e.get("type", "unknown"),
-            gtin=e.get("gtin"),
-            compared_with=json.dumps(e.get("comparedWith", [])),
-            category=e.get("category"),
-            region=e.get("region"),
-            calendar_week=e.get("week"),
-            panel=e.get("panel", False),
-            willingness_to_pay=e.get("wtpPct"),
-        )
-        db.add(ev)
-        stored += 1
-    db.commit()
-    return {"ok": True, "stored": stored}
-
-
-# ── Market signal (dashboard) ─────────────────────────────────────────────────
-
-@app.get("/api/market-signal")
-def get_market_signal(region: str = None, category: str = None, db: Session = Depends(get_db)):
-    q = db.query(DemandAggregate)
-    if region:
-        q = q.filter(DemandAggregate.region == region)
-    if category:
-        q = q.filter(DemandAggregate.category == category)
-    rows = q.order_by(DemandAggregate.updated_at.desc()).limit(50).all()
-    return {
-        "results": [
-            {
-                "category": r.category,
-                "region": r.region,
-                "calendar_week": r.calendar_week,
-                "n_events": r.n_events,
-                "preference_rate": float(r.preference_rate) if r.preference_rate else None,
-                "wtp_median": float(r.wtp_median) if r.wtp_median else None,
-                "has_panel": r.has_panel,
-            }
-            for r in rows
-        ]
-    }
+app.include_router(measures_router)
+app.include_router(bridge_router)
 
 
 # ── Serve frontend ────────────────────────────────────────────────────────────

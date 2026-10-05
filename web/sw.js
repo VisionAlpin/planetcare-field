@@ -1,5 +1,5 @@
 /* PlanetCare Field — Service Worker v0.4.1 */
-const CACHE = 'pcf-0.4.1';
+const CACHE = 'pcf-0.5.0';
 const STATIC_ASSETS = [
   '/',
   '/demo',

@@ -1,0 +1,61 @@
+<!doctype html>
+<html lang="de">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Referenz: Element „Anbau verifiziert“ für PlanetCareScan</title>
+<style>
+  /* Vorlage für die Produktseite der Verbraucher App. Farben und Schrift an PlanetCareScan anpassen. */
+  body { font-family: Inter, system-ui, sans-serif; background: #f6f7f5; color: #1F2A24; padding: 24px; }
+  .pcf-card { max-width: 420px; background: #fff; border: 1px solid #E2E5E0; border-radius: 8px; padding: 16px 20px; }
+  .pcf-head { display: flex; align-items: center; gap: 10px; }
+  .pcf-head img { width: 28px; height: 28px; }
+  .pcf-title { font-weight: 600; font-size: 15px; }
+  .pcf-sub { font-size: 12px; color: #5F6B64; }
+  .pcf-score { margin-left: auto; text-align: right; }
+  .pcf-score b { font-size: 24px; font-variant-numeric: tabular-nums; }
+  .pcf-score span { font-size: 12px; color: #5F6B64; }
+  .pcf-rows { display: grid; gap: 6px; margin-top: 12px; font-size: 13px; }
+  .pcf-row { display: grid; grid-template-columns: 110px 1fr 32px; align-items: center; gap: 8px; }
+  .pcf-bar { height: 6px; background: #EEF0ED; border-radius: 3px; overflow: hidden; }
+  .pcf-bar i { display: block; height: 100%; background: #1F5A3A; border-radius: 3px; }
+  .pcf-row b { text-align: right; font-variant-numeric: tabular-nums; font-weight: 600; }
+  .pcf-foot { margin-top: 12px; font-size: 12px; color: #5F6B64; }
+  .pcf-foot a { color: #1F5A3A; }
+  .pcf-compare { margin-top: 24px; max-width: 420px; font-size: 13px; }
+  .pcf-compare td { padding: 6px 8px; border-bottom: 1px solid #E2E5E0; }
+</style>
+</head>
+<body>
+  <!-- Nur anzeigen, wenn getFieldProfile(gtin) ein Profil liefert. Sonst NICHTS anzeigen (kein "nicht verifiziert"). -->
+  <section class="pcf-card" aria-label="Anbau verifiziert">
+    <div class="pcf-head">
+      <img src="https://www.planetcarefield.app/icons/logo-mark.svg" alt="" />
+      <div>
+        <div class="pcf-title">Anbau verifiziert</div>
+        <div class="pcf-sub">Salzburg · Ernte 2026 · 2 Schläge</div>
+      </div>
+      <div class="pcf-score"><b>72</b><span> / 100</span></div>
+    </div>
+    <div class="pcf-rows">
+      <div class="pcf-row"><span>Wasser</span><span class="pcf-bar"><i style="width:78%"></i></span><b>78</b></div>
+      <div class="pcf-row"><span>Boden</span><span class="pcf-bar"><i style="width:57%"></i></span><b>57</b></div>
+      <div class="pcf-row"><span>Pflanzenschutz</span><span class="pcf-bar"><i style="width:82%"></i></span><b>82</b></div>
+    </div>
+    <p class="pcf-foot">Gemessen mit Satellitendaten (Copernicus) und Wetterdaten, Methodik v1.0. <a href="https://www.planetcarescan.at/methodik">Wie wird gemessen?</a></p>
+  </section>
+
+  <!-- Produktvergleich: eigene Zeile "Anbau" -->
+  <table class="pcf-compare" aria-label="Vergleich">
+    <tr><td></td><td><b>Produkt A</b></td><td><b>Produkt B</b></td></tr>
+    <tr><td>Anbau</td><td>verifiziert · 72</td><td>keine Angabe</td></tr>
+  </table>
+
+  <!-- Einstellungen: Schalter, standardmäßig AUS
+  <label><input type="checkbox" name="pcf-consent">
+    Meine Kaufentscheidungen anonym als Signal für Landwirte zählen
+    (ohne Nutzerkonto, nur Bundesland und Kalenderwoche). <a href="/datenschutz#nachfragesignale">Mehr</a>
+  </label>
+  -->
+</body>
+</html>
