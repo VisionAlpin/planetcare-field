@@ -5,11 +5,6 @@ from logging.config import fileConfig
 from sqlalchemy import engine_from_config, pool
 from alembic import context
 
-# import models so autogenerate sees them
-import sys
-sys.path.insert(0, os.path.dirname(__file__) + "/..")
-from models import Base
-
 config = context.config
 
 # Inject DATABASE_URL from environment
@@ -23,7 +18,8 @@ config.set_main_option("sqlalchemy.url", db_url)
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
-target_metadata = Base.metadata
+# Kein Modell-Import — Migrationen sind manuell, kein autogenerate nötig
+target_metadata = None
 
 
 def run_migrations_offline():
