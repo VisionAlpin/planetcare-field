@@ -1,6 +1,10 @@
 -- PlanetCare Field v0.5.0: Behandlungen und Verbindung zur Verbraucher App
 -- Als Alembic Migration übernehmen (op.execute) oder einmalig per psql ausführen.
 
+-- Alte pcf_demand_events (aus 0001) hat anderes Schema — drop und neu anlegen
+DROP TABLE IF EXISTS pcf_demand_events CASCADE;
+DROP TABLE IF EXISTS pcf_demand_aggregates CASCADE;
+
 -- ---------------------------------------------------------------
 -- 1. Maßnahmen (Behandlungen). Falls "measures" schon existiert,
 --    werden nur die fehlenden Spalten ergänzt.
