@@ -6,11 +6,15 @@ import os
 import sys
 import asyncio
 import uuid
+import json
 from datetime import date, timedelta
 
+# Render liefert postgres://, SQLAlchemy braucht postgresql+psycopg2://
 db_url = os.environ.get("DATABASE_URL", "")
 if db_url.startswith("postgres://"):
-    db_url = db_url.replace("postgres://", "postgresql://", 1)
+    db_url = db_url.replace("postgres://", "postgresql+psycopg2://", 1)
+elif db_url.startswith("postgresql://"):
+    db_url = db_url.replace("postgresql://", "postgresql+psycopg2://", 1)
 os.environ["DATABASE_URL"] = db_url
 
 sys.path.insert(0, os.path.dirname(__file__) + "/../api")
@@ -19,23 +23,15 @@ from models import CropYear, IndicatorValue, FieldProfile, Field, Farm
 from satellite import fetch_ndvi_for_field, fetch_cdi_for_point, geojson_bbox
 from scoring import compute_field_profile
 
-from geoalchemy2.shape import to_shape
-import json
-
 
 async def process_crop_year(db, cy: CropYear):
     field = cy.field
     print(f"  Verarbeite: {field.name} ({cy.year})")
 
-    # Geometrie aus DB holen
-    shape = to_shape(field.geom)
-    geojson = json.loads(shape.__geo_interface__.__repr__()) if hasattr(shape, '__geo_interface__') else {}
-
-    # Einfacheres GeoJSON aus WKT
-    try:
-        geojson = {"type": "Polygon", "coordinates": [list(shape.exterior.coords)]}
-    except Exception:
-        print(f"    Geometrie-Fehler, überspringe {field.name}")
+    # Geometrie aus DB — JSONB direkt als dict
+    geojson = field.geom or {}
+    if not geojson.get("coordinates"):
+        print(f"    Keine Geometrie, überspringe {field.name}")
         return
 
     date_to = date.today().isoformat()
@@ -125,7 +121,6 @@ async def main():
     print(f"PlanetCare Field Nachtjob — {date.today()}")
     db = SessionLocal()
     try:
-        # Alle aktiven Anbaujahre (laufendes + letztes Jahr)
         current_year = date.today().year
         crop_years = (
             db.query(CropYear)
