@@ -18,8 +18,8 @@ STATEMENTS = [
 
     # Behandlungen
     """CREATE TABLE IF NOT EXISTS pcf_measures (
-        id         uuid PRIMARY KEY DEFAULT gen_random_uuid(),
-        field_id   uuid NOT NULL REFERENCES pcf_fields(id) ON DELETE CASCADE,
+        id         text PRIMARY KEY DEFAULT gen_random_uuid()::text,
+        field_id   text NOT NULL REFERENCES pcf_fields(id) ON DELETE CASCADE,
         day        date NOT NULL,
         type       text NOT NULL
     )""",
@@ -27,13 +27,13 @@ STATEMENTS = [
     "ALTER TABLE pcf_measures ADD COLUMN IF NOT EXISTS product    text",
     "ALTER TABLE pcf_measures ADD COLUMN IF NOT EXISTS amount     double precision",
     "ALTER TABLE pcf_measures ADD COLUMN IF NOT EXISTS unit       text",
-    "ALTER TABLE pcf_measures ADD COLUMN IF NOT EXISTS created_by uuid",
+    "ALTER TABLE pcf_measures ADD COLUMN IF NOT EXISTS created_by text",
     "ALTER TABLE pcf_measures ADD COLUMN IF NOT EXISTS created_at timestamptz NOT NULL DEFAULT now()",
     "CREATE INDEX IF NOT EXISTS pcf_measures_field_day_idx ON pcf_measures (field_id, day)",
 
     # Chargen
     """CREATE TABLE IF NOT EXISTS pcf_batches (
-        id           uuid PRIMARY KEY DEFAULT gen_random_uuid(),
+        id           text PRIMARY KEY DEFAULT gen_random_uuid()::text,
         label        text NOT NULL,
         buyer        text NOT NULL,
         crop         text NOT NULL,
@@ -43,8 +43,8 @@ STATEMENTS = [
     )""",
 
     """CREATE TABLE IF NOT EXISTS pcf_batch_fields (
-        batch_id    uuid NOT NULL REFERENCES pcf_batches(id) ON DELETE CASCADE,
-        field_id    uuid NOT NULL REFERENCES pcf_fields(id) ON DELETE CASCADE,
+        batch_id    text NOT NULL REFERENCES pcf_batches(id) ON DELETE CASCADE,
+        field_id    text NOT NULL REFERENCES pcf_fields(id) ON DELETE CASCADE,
         share       double precision NOT NULL CHECK (share > 0 AND share <= 1),
         consent_at  timestamptz,
         revoked_at  timestamptz,
@@ -53,7 +53,7 @@ STATEMENTS = [
 
     """CREATE TABLE IF NOT EXISTS pcf_product_batches (
         gtin        text NOT NULL,
-        batch_id    uuid NOT NULL REFERENCES pcf_batches(id) ON DELETE CASCADE,
+        batch_id    text NOT NULL REFERENCES pcf_batches(id) ON DELETE CASCADE,
         valid_from  date NOT NULL DEFAULT current_date,
         valid_to    date,
         PRIMARY KEY (gtin, batch_id)
