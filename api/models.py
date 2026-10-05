@@ -104,40 +104,6 @@ class ProductLink(Base):
     profile = relationship("FieldProfile", back_populates="product_links")
 
 
-class DemandEvent(Base):
-    __tablename__ = "pcf_demand_events"
 
-    id                 = Column(Text, primary_key=True, default=_uuid)
-    event_type         = Column(Text, nullable=False)
-    gtin               = Column(Text)
-    compared_with      = Column(Text)
-    category           = Column(Text)
-    region             = Column(Text)
-    calendar_week      = Column(Text)
-    panel              = Column(Boolean, default=False)
-    willingness_to_pay = Column(Numeric)
-    received_at        = Column(DateTime(timezone=True), server_default=func.now())
+# DemandEvent, DemandAggregate, Consent: ab v0.5.0 über bridge.py / direkt per SQL verwaltet
 
-
-class DemandAggregate(Base):
-    __tablename__ = "pcf_demand_aggregates"
-
-    id              = Column(Text, primary_key=True, default=_uuid)
-    category        = Column(Text, nullable=False)
-    region          = Column(Text, nullable=False)
-    calendar_week   = Column(Text, nullable=False)
-    n_events        = Column(Integer, default=0)
-    preference_rate = Column(Numeric)
-    wtp_median      = Column(Numeric)
-    has_panel       = Column(Boolean, default=False)
-    updated_at      = Column(DateTime(timezone=True), server_default=func.now())
-
-
-class Consent(Base):
-    __tablename__ = "pcf_consents"
-
-    id           = Column(Text, primary_key=True, default=_uuid)
-    farm_id      = Column(Text, ForeignKey("pcf_farms.id", ondelete="CASCADE"))
-    consent_type = Column(Text, nullable=False)
-    granted      = Column(Boolean, default=False)
-    granted_at   = Column(DateTime(timezone=True))

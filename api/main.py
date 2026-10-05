@@ -20,7 +20,7 @@ import collections
 
 from database import get_db
 from models import (
-    CropYear, DemandAggregate, DemandEvent, Farm, FieldProfile,
+    CropYear, Farm, FieldProfile,
     IndicatorValue, Field, ProductLink,
 )
 from scoring import compute_field_profile
