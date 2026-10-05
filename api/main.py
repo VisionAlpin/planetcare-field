@@ -310,8 +310,12 @@ def list_fields(db: Session = Depends(get_db), authorization: str = Header(None)
 
 
 # ── Behandlungen + Bridge zur Verbraucher App (v0.5.0) ───────────────────────
-from .app.measures import router as measures_router
-from .app.bridge import router as bridge_router
+try:
+    from .app.measures import router as measures_router
+    from .app.bridge import router as bridge_router
+except ImportError:
+    from app.measures import router as measures_router
+    from app.bridge import router as bridge_router
 
 app.include_router(measures_router)
 app.include_router(bridge_router)
