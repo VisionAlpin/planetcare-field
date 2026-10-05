@@ -12,7 +12,9 @@ depends_on = None
 
 
 def upgrade():
-    sql = open("migrations/0005_measures_bridge.sql").read()
+    import os
+    sql_path = os.path.join(os.path.dirname(__file__), "..", "0005_measures_bridge.sql")
+    sql = open(sql_path).read()
     op.execute(sql)
 
 
