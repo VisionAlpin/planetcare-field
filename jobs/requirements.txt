@@ -1,0 +1,3 @@
+requests>=2.31
+cdsapi>=0.7.4
+psycopg[binary]>=3.1

@@ -1,14 +1,11 @@
-FROM python:3.11-slim
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    libpq-dev gcc libgdal-dev && \
-    rm -rf /var/lib/apt/lists/*
-
+# PlanetCare Field Nachtjob (Render Cron, Build Kontext = Projektwurzel)
+FROM python:3.12-slim
+ENV PYTHONUNBUFFERED=1
 WORKDIR /app
-
-COPY api/requirements.txt .
-RUN pip install --no-cache-dir -r requirements.txt
-
-COPY . .
-
-CMD ["python", "jobs/run.py"]
+COPY jobs/requirements.txt /app/jobs/requirements.txt
+RUN pip install --no-cache-dir -r /app/jobs/requirements.txt
+# Bewertungslogik wird mit der API geteilt
+COPY api/app /app/api/app
+COPY jobs /app/jobs
+WORKDIR /app/jobs
+CMD ["python", "-m", "pcf_jobs.run_nightly"]

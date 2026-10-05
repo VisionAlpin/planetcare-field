@@ -1,4 +1,4 @@
-"""PlanetCare Field — FastAPI Backend v0.3.0
+"""PlanetCare Field — FastAPI Backend v0.4.0
 Render PostgreSQL (SQLAlchemy) statt Supabase.
 """
 
@@ -31,7 +31,7 @@ WEB_DIR = Path(__file__).parent.parent / "web"
 
 app = FastAPI(
     title="PlanetCare Field API",
-    version="0.3.0",
+    version="0.4.0",
     description="Sustainability scoring for agricultural fields (NOSTRADAMUS / Horizon Europe TRL-4)",
     docs_url="/docs",
     redoc_url="/redoc",
@@ -65,8 +65,24 @@ def get_farmer_email(authorization: str = Header(None)) -> str:
 # ── Health ────────────────────────────────────────────────────────────────────
 
 @app.get("/health")
-def health():
-    return {"status": "ok", "version": "0.3.0"}
+def health(db: Session = Depends(get_db)):
+    # Letzten Job-Run aus job_runs Tabelle lesen (falls schon angelegt)
+    last_run = None
+    try:
+        from sqlalchemy import text
+        row = db.execute(text(
+            "SELECT finished_at, status, fields_ok, fields_failed FROM job_runs ORDER BY id DESC LIMIT 1"
+        )).fetchone()
+        if row:
+            last_run = {
+                "finishedAt": row[0].isoformat() if row[0] else None,
+                "status": row[1],
+                "fieldsOk": row[2],
+                "fieldsFailed": row[3],
+            }
+    except Exception:
+        pass
+    return {"status": "ok", "version": "0.4.0", "lastJobRun": last_run}
 
 
 # ── Overview endpoint (main dashboard data) ───────────────────────────────────

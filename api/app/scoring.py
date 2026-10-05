@@ -32,6 +32,7 @@ SOURCE_LABELS = {
     "treatments": "Einträge",
     "era5_treatments": "ERA5 + Einträge",
     "sentinel2_soilgrids": "Sentinel 2 + SoilGrids",
+    "sentinel2_era5": "Sentinel 2 + ERA5",
 }
 
 
@@ -107,6 +108,25 @@ def protection_score(treatment_dates: list[date], risk_dates: set[date], window_
         if any(abs((t - r).days) <= window_days for r in risk_dates)
     )
     return clamp(100.0 * targeted / len(treatment_dates))
+
+
+def water_resilience_score(ndvi_dry: list[float], ndvi_reference: list[float], min_reference: int = 3) -> Optional[float]:
+    """Wasser: Wie gut hält der Bestand seine Vitalität in Trockenphasen?
+
+    ndvi_dry        NDVI an Tagen in Trockenphasen (14 Tage < 10 mm Niederschlag, ERA5)
+    ndvi_reference  Vergleichswerte aus normalen Phasen, zeitlich nah (plus/minus 30 Tage),
+                    damit der natürliche Wachstumsverlauf das Ergebnis nicht verzerrt
+    100 = kein Einbruch, ein Einbruch um 30 % oder mehr ergibt 0. Ohne Trockenphase: 100.
+    Im Förderprojekt ersetzt bzw. ergänzt durch NOSTRADAMUS Modul M1 (CDI, 10 m).
+    """
+    ref = [v for v in ndvi_reference if is_num(v)]
+    dry = [v for v in ndvi_dry if is_num(v)]
+    if len(ref) < min_reference or mean(ref) <= 0:
+        return None
+    if not dry:
+        return 100.0
+    drop = 1.0 - mean(dry) / mean(ref)  # 0 = kein Einbruch, 0.3 = 30 % Einbruch
+    return clamp(100.0 * (1.0 - max(drop, 0.0) / 0.30))
 
 
 def total_score(scores: dict) -> Optional[float]:
