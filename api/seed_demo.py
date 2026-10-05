@@ -13,7 +13,7 @@ os.environ["DATABASE_URL"] = db_url
 
 from database import SessionLocal
 from models import (
-    Farm, Field, CropYear, IndicatorValue, FieldProfile, ProductLink
+    Farm, Field, CropYear, IndicatorValue, FieldProfile
 )
 
 DEMO_EMAIL = "demo@planetcarescan.at"
@@ -98,15 +98,6 @@ def run():
                 )
                 db.add(profile)
                 db.flush()
-
-                # Demo GTIN-Verknüpfung für 2026
-                if year == 2026 and name == "Schlag Nord":
-                    db.add(ProductLink(
-                        id=str(uuid.uuid4()),
-                        gtin="9001234567890",
-                        field_profile_id=profile.id,
-                        batch_id="DEMO-2026-001",
-                    ))
 
         make_field("Schlag Nord", GEOM_NORD, "Winterweizen", 12.4)
         make_field("Schlag Süd",  GEOM_SUED, "Sommergerste",  8.7)
