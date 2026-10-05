@@ -13,18 +13,26 @@ from datetime import date
 from typing import Optional
 
 FIELDS_SQL = """
-SELECT f.id::text, f.name, ST_AsGeoJSON(f.geom)::text, f.season_start,
-       ST_Y(ST_Centroid(f.geom)), ST_X(ST_Centroid(f.geom)),
-       ST_Area(f.geom::geography) / 10000.0
-FROM fields f
+SELECT f.id::text, f.name,
+       f.geom::text,
+       f.season_start,
+       ((f.geom->'coordinates'->0->0->>1)::float + (f.geom->'coordinates'->0->2->>1)::float) / 2,
+       ((f.geom->'coordinates'->0->0->>0)::float + (f.geom->'coordinates'->0->2->>0)::float) / 2,
+       COALESCE(f.area_ha, 10.0)
+FROM pcf_fields f
 WHERE f.geom IS NOT NULL
 ORDER BY f.name
 """
 
-# Pflanzenschutz Behandlungen je Schlag. Tabelle laut Konzept "Maßnahme".
+# Pflanzenschutz: Tabelle pcf_indicator_values mit indicator='pesticide'
 TREATMENTS_SQL = """
-SELECT m.day FROM measures m
-WHERE m.field_id = %s AND m.type = 'pflanzenschutz' AND m.day BETWEEN %s AND %s
+SELECT iv.acquired_at FROM pcf_indicator_values iv
+WHERE iv.crop_year_id IN (
+    SELECT cy.id FROM pcf_crop_years cy WHERE cy.field_id = %s
+      AND cy.year = EXTRACT(YEAR FROM %s::date)
+)
+AND iv.indicator = 'pesticide'
+AND iv.acquired_at BETWEEN %s AND %s
 """
 
 UPSERT_INDICATOR_SQL = """
@@ -64,11 +72,16 @@ class PostgresStore:
     def fields(self) -> list[FieldRow]:
         with self.conn.cursor() as cur:
             cur.execute(FIELDS_SQL)
-            return [FieldRow(r[0], r[1], json.loads(r[2]), r[3], float(r[4]), float(r[5]), float(r[6])) for r in cur.fetchall()]
+            rows = cur.fetchall()
+            result = []
+            for r in rows:
+                geom = r[2] if isinstance(r[2], dict) else json.loads(r[2] or "{}")
+                result.append(FieldRow(r[0], r[1], geom, r[3], float(r[4] or 0), float(r[5] or 0), float(r[6] or 10)))
+            return result
 
     def treatments(self, field_id: str, start: date, end: date) -> list[date]:
         with self.conn.cursor() as cur:
-            cur.execute(TREATMENTS_SQL, (field_id, start, end))
+            cur.execute(TREATMENTS_SQL, (field_id, start, start, end))
             return [r[0] for r in cur.fetchall()]
 
     def save_indicators(self, field_id: str, rows: list[tuple]) -> None:
