@@ -39,7 +39,7 @@ def upgrade():
         sa.Column("protection", sa.Float),
         sa.Column("sources", JSONB, server_default="'{}'::jsonb"),
         sa.Column("data_dates", JSONB, server_default="'{}'::jsonb"),
-        sa.Column("methodology", sa.Text, server_default="v1.0"),
+        sa.Column("methodology", sa.Text, server_default="'v1.0'"),
         sa.Column("computed_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.PrimaryKeyConstraint("field_id", "season", "asof"),
     )
@@ -51,7 +51,7 @@ def upgrade():
         sa.Column("id", sa.BigInteger, primary_key=True, autoincrement=True),
         sa.Column("started_at", sa.DateTime(timezone=True), server_default=sa.func.now()),
         sa.Column("finished_at", sa.DateTime(timezone=True)),
-        sa.Column("status", sa.Text, server_default="running"),
+        sa.Column("status", sa.Text, server_default="'running'"),
         sa.Column("fields_ok", sa.Integer, server_default="0"),
         sa.Column("fields_failed", sa.Integer, server_default="0"),
         sa.Column("message", sa.Text),
