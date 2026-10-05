@@ -21,6 +21,20 @@
   }
 
   const MIN_SCORES_FOR_TOTAL = 2; // Gesamtwert erst ab zwei verfügbaren Teilwerten
+  const STALE_DAYS = 14; // ältere Werte werden als "veraltet" gekennzeichnet
+
+  // Anzeigenamen für technische Quellenschlüssel (Rückfall, falls das Backend Schlüssel liefert)
+  const SOURCE_LABELS = {
+    copernicus_edo: "Copernicus EDO (CDI)",
+    copernicus_gdo: "Copernicus EDO (CDI)",
+    edo_cdi: "Copernicus EDO (CDI)",
+    sentinel2: "Sentinel 2",
+    "sentinel-2": "Sentinel 2",
+    era5: "ERA5",
+    soilgrids: "SoilGrids",
+    treatments: "Einträge",
+    era5_treatments: "ERA5 + Einträge"
+  };
   const MONTHS = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"];
 
   /* ---------- Hilfsfunktionen ---------- */
@@ -36,6 +50,30 @@
 
   function mean(values) {
     return values.reduce((a, b) => a + b, 0) / values.length;
+  }
+
+  // Zahl prüfen: null, undefined und NaN gelten als "kein Wert" (nie als 0 rechnen!)
+  function isNum(v) {
+    return typeof v === "number" && Number.isFinite(v);
+  }
+
+  // Mittelwert nur, wenn ALLE Werte vorhanden sind, sonst null
+  function meanOrNull(values) {
+    return values.length && values.every(isNum) ? mean(values) : null;
+  }
+
+  function sourceLabel(src) {
+    if (!src) return "";
+    return SOURCE_LABELS[String(src).toLowerCase()] || src;
+  }
+
+  function versionLabel(v) {
+    if (!v) return "";
+    return /^v/i.test(v) ? v : "v" + v;
+  }
+
+  function daysSince(iso) {
+    return Math.floor((Date.now() - Date.parse(iso)) / 864e5);
   }
 
   // Fläche eines GeoJSON Polygons in Hektar (lokale Projektion, genau genug für Feldgrößen)
@@ -57,8 +95,8 @@
     return {
       available: true,
       value: mean(avail.map((s) => s.value)),
-      previousSeason: mean(avail.map((s) => s.previousSeason)),
-      regionalAverage: mean(avail.map((s) => s.regionalAverage)),
+      previousSeason: meanOrNull(avail.map((s) => s.previousSeason)),
+      regionalAverage: meanOrNull(avail.map((s) => s.regionalAverage)),
       source: "Methodik",
       date: dates[dates.length - 1],
       explanation: "Mittelwert der verfügbaren Teilwerte Wasser, Boden und Pflanzenschutz. Wird erst ab zwei Teilwerten berechnet."
@@ -69,7 +107,8 @@
 
   function kpiTile({ id, label, iconName, data, total, methodVersion }) {
     const popId = "pop-" + id;
-    const sourceLine = total ? "Methodik " + methodVersion : data.available ? data.source + " · " + fmtDate(data.date) : "";
+    const stale = !total && data.available && data.date && daysSince(data.date) > STALE_DAYS;
+    const sourceLine = total ? "Methodik " + versionLabel(methodVersion) : data.available ? sourceLabel(data.source) + " · " + fmtDate(data.date) : "";
 
     let body;
     if (!data.available) {
@@ -79,20 +118,29 @@
     } else {
       const v = Math.round(data.value);
       const r = rating(v);
-      const delta = Math.round(data.value - data.previousSeason);
-      const trendIcon = delta > 0 ? "trending-up" : delta < 0 ? "trending-down" : "minus";
-      const deltaText = (delta > 0 ? "+" : delta < 0 ? "−" : "±") + Math.abs(delta);
+      const parts = [];
+      if (isNum(data.previousSeason)) {
+        const delta = Math.round(data.value - data.previousSeason);
+        const trendIcon = delta > 0 ? "trending-up" : delta < 0 ? "trending-down" : "minus";
+        const deltaText = (delta > 0 ? "+" : delta < 0 ? "−" : "±") + Math.abs(delta);
+        parts.push('<span class="delta">' + icon(trendIcon) + deltaText + " zum Vorjahr</span>");
+      }
+      if (isNum(data.regionalAverage)) {
+        parts.push("<span>Region Ø " + Math.round(data.regionalAverage) + "</span>");
+      }
       body =
         '<div class="kpi-value-row"><span class="kpi-value num">' + v + '</span><span class="kpi-max">/ 100</span></div>' +
         '<div class="kpi-status status--' + r.cls + '"><span class="dot" aria-hidden="true"></span>' + r.text + "</div>" +
-        '<div class="kpi-compare num">' +
-        '<span class="delta">' + icon(trendIcon) + deltaText + " zum Vorjahr</span>" +
-        '<span class="sep" aria-hidden="true">|</span>' +
-        "<span>Region Ø " + Math.round(data.regionalAverage) + "</span>" +
-        "</div>";
+        (parts.length
+          ? '<div class="kpi-compare num">' + parts.join('<span class="sep" aria-hidden="true">|</span>') + "</div>"
+          : '<div class="kpi-compare">Noch keine Vergleichswerte</div>');
     }
 
-    const popSource = data.available ? (total ? "Methodik " + methodVersion : data.source + " · Stand " + fmtDate(data.date)) : "Für diesen Teilwert liegen noch keine Daten vor.";
+    const popSource = data.available
+      ? total
+        ? "Methodik " + versionLabel(methodVersion)
+        : sourceLabel(data.source) + " · Stand " + fmtDate(data.date) + (stale ? " (älter als " + STALE_DAYS + " Tage)" : "")
+      : "Für diesen Teilwert liegen noch keine Daten vor.";
 
     return (
       '<article class="kpi' + (total ? " kpi--total" : "") + '" aria-labelledby="lbl-' + id + '">' +
@@ -101,7 +149,7 @@
       '<button class="icon-button info-btn" type="button" aria-label="Erklärung zu ' + esc(label) + '" aria-expanded="false" aria-controls="' + popId + '">' + icon("info") + "</button>" +
       "</div>" +
       body +
-      (sourceLine ? '<div class="kpi-source">' + esc(sourceLine) + "</div>" : "") +
+      (sourceLine ? '<div class="kpi-source' + (stale ? " is-stale" : "") + '">' + esc(sourceLine) + (stale ? ' <span class="stale-tag">veraltet</span>' : "") + "</div>" : "") +
       '<div class="popover" id="' + popId + '" role="dialog" aria-label="' + esc(label) + '" hidden>' +
       "<p>" + esc(data.explanation || "") + "</p>" +
       "<p>" + esc(popSource) + "</p>" +
@@ -111,7 +159,9 @@
   }
 
   function renderKpis(el, d) {
-    const total = computeTotal(d.scores);
+    // Gesamtwert vom Backend bevorzugen, sonst lokal berechnen
+    const local = computeTotal(d.scores);
+    const total = d.total && d.total.available && local.available ? Object.assign({}, local, d.total) : local;
     let html = kpiTile({ id: "total", label: "Gesamt", iconName: "gauge", data: total, total: true, methodVersion: d.methodology.version });
     SCORES.forEach((s) => {
       html += kpiTile({ id: s.key, label: s.label, iconName: s.icon, data: d.scores[s.key] });
@@ -145,21 +195,39 @@
   /* ---------- Verlaufsdiagramm ---------- */
 
   function renderChart(wrap, d) {
-    const scoresAvail = SCORES.filter((s) => d.scores[s.key].available);
-    const rows = d.series.map((r) => {
-      const vals = scoresAvail.map((s) => r[s.key]);
-      return Object.assign({}, r, { total: vals.length >= MIN_SCORES_FOR_TOTAL ? mean(vals) : null });
-    });
+    const scoresAvail = SCORES.filter((s) => d.scores[s.key] && d.scores[s.key].available);
+    const season = String(d.field.season);
+    // Nur Messungen DIESER Saison, zeitlich sortiert (Vorjahreswerte gehören in previousSeason)
+    const rows = (d.series || [])
+      .filter((r) => r && r.date && String(r.date).slice(0, 4) === season)
+      .sort((a, b) => Date.parse(a.date) - Date.parse(b.date))
+      .map((r) => {
+        const vals = scoresAvail.map((s) => r[s.key]).filter(isNum);
+        return Object.assign({}, r, { total: vals.length >= MIN_SCORES_FOR_TOTAL ? mean(vals) : null });
+      });
+
+    const box = wrap.querySelector(".chart-wrap");
+    const legendEl = wrap.querySelector(".legend");
+    const toggle = wrap.querySelector(".table-toggle");
+    if (rows.length < 3) {
+      legendEl.innerHTML = "";
+      toggle.hidden = true;
+      wrap.querySelector(".data-table").hidden = true;
+      box.innerHTML =
+        '<div class="chart-empty">Für einen Verlauf braucht es mindestens drei Messungen in dieser Saison. ' +
+        "Bisher liegen " + rows.length + " vor. Neue Werte kommen mit jeder wolkenfreien Satellitenaufnahme dazu.</div>";
+      return;
+    }
+    toggle.hidden = false;
     const series = [{ key: "total", label: "Gesamt", color: "var(--brand)", dash: "", width: 2.5, isTotal: true }].concat(
       scoresAvail.map((s) => ({ key: s.key, label: s.label, color: s.color, dash: s.dash, legend: s.legend, width: 1.5 }))
     );
 
     // Legende
-    wrap.querySelector(".legend").innerHTML = series
+    legendEl.innerHTML = series
       .map((s) => '<span class="legend-item"><span class="legend-swatch" style="border-top-color:' + s.color + ";border-top-width:" + s.width + "px;" + "border-top-style:" + (s.legend || "solid") + ";" + '"></span>' + esc(s.label) + "</span>")
       .join("");
 
-    const box = wrap.querySelector(".chart-wrap");
     const W = Math.max(box.clientWidth, 280);
     const H = 220;
     const pad = { l: 32, r: 116, t: 10, b: 26 };
@@ -187,14 +255,14 @@
 
     // Linien, Gesamt zuletzt (oben)
     series.slice().reverse().forEach((s) => {
-      const pts = rows.filter((r) => r[s.key] != null).map((r) => X(r.date).toFixed(1) + "," + Y(r[s.key]).toFixed(1)).join(" ");
+      const pts = rows.filter((r) => isNum(r[s.key])).map((r) => X(r.date).toFixed(1) + "," + Y(r[s.key]).toFixed(1)).join(" ");
       svg += '<polyline points="' + pts + '" fill="none" stroke="' + s.color + '" stroke-width="' + s.width + '" stroke-linecap="round" stroke-linejoin="round"' + (s.dash ? ' stroke-dasharray="' + s.dash + '"' : "") + " />";
     });
 
     // Direkte Beschriftung am Linienende, Überlappung vermeiden
     const last = rows[rows.length - 1];
     const labels = series
-      .filter((s) => last[s.key] != null)
+      .filter((s) => isNum(last[s.key]))
       .map((s) => ({ s, y: Y(last[s.key]), text: s.label + " " + Math.round(last[s.key]) }))
       .sort((a, b) => a.y - b.y);
     const GAP = 14;
@@ -231,12 +299,12 @@
       cross.setAttribute("x2", px);
       cross.setAttribute("visibility", "visible");
       dots.innerHTML = series
-        .filter((s) => r[s.key] != null)
+        .filter((s) => isNum(r[s.key]))
         .map((s) => '<circle cx="' + px + '" cy="' + Y(r[s.key]) + '" r="4" fill="' + s.color + '" stroke="var(--bg)" stroke-width="2" />')
         .join("");
       tip.innerHTML =
         '<div class="tooltip-date">' + fmtDate(r.date) + "</div>" +
-        series.filter((s) => r[s.key] != null).map((s) => '<div class="tooltip-row"><span>' + esc(s.label) + '</span><strong class="num">' + Math.round(r[s.key]) + "</strong></div>").join("");
+        series.filter((s) => isNum(r[s.key])).map((s) => '<div class="tooltip-row"><span>' + esc(s.label) + '</span><strong class="num">' + Math.round(r[s.key]) + "</strong></div>").join("");
       tip.hidden = false;
       const scale = rect.width / W;
       const tipW = tip.offsetWidth;
@@ -260,7 +328,7 @@
     const table = wrap.querySelector(".data-table");
     table.innerHTML =
       "<thead><tr><th>Datum</th>" + series.map((s) => "<th>" + esc(s.label) + "</th>").join("") + "</tr></thead>" +
-      "<tbody>" + rows.map((r) => "<tr><td>" + fmtDate(r.date) + "</td>" + series.map((s) => '<td class="num">' + (r[s.key] != null ? Math.round(r[s.key]) : "") + "</td>").join("") + "</tr>").join("") + "</tbody>";
+      "<tbody>" + rows.map((r) => "<tr><td>" + fmtDate(r.date) + "</td>" + series.map((s) => '<td class="num">' + (isNum(r[s.key]) ? Math.round(r[s.key]) : "") + "</td>").join("") + "</tr>").join("") + "</tbody>";
   }
 
   /* ---------- Kartenausschnitt ---------- */
@@ -281,6 +349,23 @@
       "</svg>";
   }
 
+  /* ---------- Hinweis ---------- */
+
+  // Rückfall, solange das Backend noch keinen Hinweis liefert:
+  // der Teilwert mit dem größten Abstand UNTER dem regionalen Durchschnitt,
+  // ohne Regionalwerte der schwächste Teilwert unter 70.
+  function deriveHint(scores) {
+    const avail = SCORES.map((s) => Object.assign({ label: s.label }, scores[s.key] || {})).filter((s) => s.available && isNum(s.value));
+    const gaps = avail.filter((s) => isNum(s.regionalAverage) && s.value < s.regionalAverage);
+    if (gaps.length) {
+      const g = gaps.sort((a, b) => (a.value - a.regionalAverage) - (b.value - b.regionalAverage))[0];
+      return { text: g.label + " liegt mit " + Math.round(g.value) + " um " + Math.round(g.regionalAverage - g.value) + " Punkte unter dem regionalen Durchschnitt.", link: "#felder" };
+    }
+    const weak = avail.filter((s) => s.value < 70).sort((a, b) => a.value - b.value)[0];
+    if (weak) return { text: weak.label + " ist mit " + Math.round(weak.value) + " der schwächste Teilwert. Hier liegt das größte Verbesserungspotenzial.", link: "#felder" };
+    return null;
+  }
+
   /* ---------- Gesamte Seite ---------- */
 
   function renderOverview(d) {
@@ -298,8 +383,9 @@
     wirePopovers(kpis);
 
     const hint = document.querySelector("[data-hint]");
-    if (d.hint) {
-      hint.innerHTML = icon("info") + '<span class="hint-text"><span class="hint-label">Hinweis:</span> ' + esc(d.hint.text) + '</span><a href="' + esc(d.hint.link) + '">Details</a>';
+    const h = d.hint && d.hint.text ? d.hint : deriveHint(d.scores);
+    if (h) {
+      hint.innerHTML = icon("info") + '<span class="hint-text"><span class="hint-label">Hinweis:</span> ' + esc(h.text) + "</span>" + (h.link ? '<a href="' + esc(h.link) + '">Details</a>' : "");
     } else {
       hint.remove();
     }
@@ -326,8 +412,26 @@
     document.querySelector("[data-map-area]").textContent = ha + " ha";
 
     document.querySelector("[data-footer]").textContent =
-      "Methodik " + d.methodology.version + " · berechnet am " + fmtDate(d.methodology.computedAt) + " · Daten: " + d.methodology.dataSources.join(", ");
+      "Methodik " + versionLabel(d.methodology.version) + " · berechnet am " + fmtDate(d.methodology.computedAt) + " · Daten: " + d.methodology.dataSources.join(", ");
   }
 
-  window.PlanetCareField = { renderOverview, computeTotal, rating, areaHa };
+  /* ---------- Daten laden ---------- */
+
+  // Lädt die Übersicht von der API. Ohne Server (Datei geöffnet) oder mit ?offline werden die Demo Daten genutzt.
+  async function loadOverview({ fieldId, season, demoData }) {
+    const offline = !location.protocol.startsWith("http") || new URLSearchParams(location.search).has("offline");
+    if (offline) return demoData;
+    const res = await fetch("/api/fields/" + encodeURIComponent(fieldId) + "/overview?season=" + encodeURIComponent(season), {
+      credentials: "same-origin",
+      headers: { Accept: "application/json" }
+    });
+    if (res.status === 401) {
+      location.href = "/login";
+      return null;
+    }
+    if (!res.ok) throw new Error("Overview " + res.status);
+    return res.json();
+  }
+
+  window.PlanetCareField = { renderOverview, loadOverview, computeTotal, rating, areaHa, deriveHint, VERSION: "0.3.0" };
 })();

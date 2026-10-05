@@ -1,4 +1,4 @@
-"""PlanetCare Field — FastAPI Backend v0.2.0
+"""PlanetCare Field — FastAPI Backend v0.3.0
 Render PostgreSQL (SQLAlchemy) statt Supabase.
 """
 
@@ -22,6 +22,7 @@ from models import (
     IndicatorValue, Field, ProductLink,
 )
 from scoring import compute_field_profile
+from app.scoring import finalize_overview
 
 # ── Config ────────────────────────────────────────────────────────────────────
 
@@ -30,7 +31,7 @@ WEB_DIR = Path(__file__).parent.parent / "web"
 
 app = FastAPI(
     title="PlanetCare Field API",
-    version="0.2.0",
+    version="0.3.0",
     description="Sustainability scoring for agricultural fields (NOSTRADAMUS / Horizon Europe TRL-4)",
     docs_url="/docs",
     redoc_url="/redoc",
@@ -65,7 +66,7 @@ def get_farmer_email(authorization: str = Header(None)) -> str:
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "version": "0.2.0"}
+    return {"status": "ok", "version": "0.3.0"}
 
 
 # ── Overview endpoint (main dashboard data) ───────────────────────────────────
@@ -201,7 +202,26 @@ def get_field_overview(
             "dataSources": ["Copernicus Sentinel-2", "EDO CDI"],
         },
     }
-    return result
+
+    # Vorsaison-Scores für previousSeason
+    prev_year = target_year - 1
+    prev_cy = next((c for c in crop_years if c.year == prev_year), None)
+    previous_scores = {}
+    if prev_cy:
+        prev_profile = (
+            db.query(FieldProfile)
+            .filter(FieldProfile.crop_year_id == prev_cy.id)
+            .order_by(FieldProfile.calculated_at.desc())
+            .first()
+        )
+        if prev_profile:
+            previous_scores = {
+                "water": float(prev_profile.score_water) if prev_profile.score_water else None,
+                "soil": float(prev_profile.score_biodiversity) if prev_profile.score_biodiversity else None,
+                "protection": float(prev_profile.score_pesticide) if prev_profile.score_pesticide else None,
+            }
+
+    return finalize_overview(result, previous_scores)
 
 
 def _build_series(db, field_id, crop_years):
@@ -364,6 +384,20 @@ if WEB_DIR.exists():
     @app.get("/manifest.json")
     async def serve_manifest():
         f = WEB_DIR / "manifest.json"
+        if f.exists():
+            return FR(str(f))
+        raise HTTPException(status_code=404)
+
+    @app.get("/fonts/{path:path}")
+    async def serve_fonts(path: str):
+        f = WEB_DIR / "fonts" / path
+        if f.exists():
+            return FR(str(f))
+        raise HTTPException(status_code=404)
+
+    @app.get("/sw.js")
+    async def serve_sw():
+        f = WEB_DIR / "sw.js"
         if f.exists():
             return FR(str(f))
         raise HTTPException(status_code=404)

@@ -323,3 +323,30 @@ main { padding: var(--s6) 0 var(--s8); }
   .kpis { grid-template-columns: 1fr; }
   .kpi-source { display: none; }
 }
+
+/* v0.3.0 */
+.chart-empty {
+  min-height: 160px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: var(--s6);
+  background: var(--surface);
+  border-radius: 6px;
+  color: var(--text-muted);
+  font-size: var(--fs-small);
+}
+.table-toggle[hidden] { display: none; }
+.stale-tag {
+  display: inline-block;
+  margin-left: var(--s1);
+  padding: 0 6px;
+  border: 1px solid var(--medium);
+  border-radius: 4px;
+  color: var(--medium);
+  font-size: 11px;
+  line-height: 16px;
+}
+.app-footer .legal { display: flex; flex-wrap: wrap; gap: var(--s2) var(--s4); margin-top: var(--s2); }
+.app-footer .legal a { color: var(--text-muted); font-weight: 400; }

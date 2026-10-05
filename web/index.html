@@ -3,9 +3,8 @@
 <head>
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
-  <meta name="theme-color" content="#1F5A3A" />
   <title>Übersicht · PlanetCare Field</title>
-  <link rel="manifest" href="manifest.json" />
+  <meta name="theme-color" content="#1F5A3A" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&display=swap" rel="stylesheet" />
@@ -78,37 +77,43 @@
   </main>
 
   <footer class="app-footer">
-    <div class="container" data-footer></div>
+    <div class="container">
+      <div data-footer></div>
+      <nav class="legal" aria-label="Rechtliches">
+        <a href="https://www.planetcarescan.at/impressum" rel="noopener">Impressum</a>
+        <a href="https://www.planetcarescan.at/datenschutz" rel="noopener">Datenschutz</a>
+        <span>© VisionAlpin GmbH</span>
+      </nav>
+    </div>
   </footer>
 
   <script src="js/icons.js"></script>
+  <script src="data/demo-data.js"></script>
   <script src="js/overview.js"></script>
   <script>
-    // Tab Symbole einsetzen
+    // Tab Symbole einsetzen (nur in der mobilen Leiste sichtbar)
     document.querySelectorAll("[data-icon]").forEach((el) => { el.outerHTML = icon(el.dataset.icon); });
 
-    async function load(fieldId, season) {
-      const res = await fetch(
-        `/api/fields/${encodeURIComponent(fieldId)}/overview?season=${season}`,
-        { credentials: "same-origin" }
-      );
-      if (res.status === 401) { location.href = "/login"; return; }
-      if (!res.ok) throw new Error("Overview " + res.status);
-      PlanetCareField.renderOverview(await res.json());
-    }
-
     const params = new URLSearchParams(location.search);
-    load(
-      params.get("field") || "default",
-      params.get("season") || new Date().getFullYear()
-    ).catch(() => {
-      document.querySelector("main .container").innerHTML =
-        "<p>Die Daten konnten gerade nicht geladen werden. Bitte später erneut versuchen.</p>";
-    });
+    const fieldId = params.get("field") || "default";
+    const season = params.get("season") || String(new Date().getFullYear());
 
+    // Testzustand offline: index.html?state=missing zeigt Pflanzenschutz ohne Daten
+    const demo = structuredClone(window.PCF_DEMO);
+    if (params.get("state") === "missing") demo.scores.protection.available = false;
+
+    PlanetCareField.loadOverview({ fieldId, season, demoData: demo })
+      .then((data) => { if (data) PlanetCareField.renderOverview(data); })
+      .catch((err) => {
+        console.error(err);
+        document.querySelector("main .container").innerHTML =
+          '<p role="alert">Die Daten konnten gerade nicht geladen werden. Bitte später erneut versuchen.</p>';
+      });
+
+    // Auswahl Schlag · Saison lädt die Seite mit neuen Parametern
     document.querySelector("[data-field-select]").addEventListener("change", (e) => {
-      const [field, season] = e.target.value.split(":");
-      location.search = `?field=${field}&season=${season}`;
+      const [field, year] = e.target.value.split(":");
+      location.search = "?field=" + encodeURIComponent(field) + "&season=" + encodeURIComponent(year);
     });
   </script>
 </body>
