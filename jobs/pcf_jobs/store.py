@@ -84,6 +84,19 @@ class PostgresStore:
                 (field_id, season, snap.asof, snap.water, snap.soil, snap.protection, json.dumps(snap.sources), json.dumps(dates), methodology),
             )
 
+    def close_stale_runs(self, hours: int = 6) -> int:
+        """Läufe, die seit Stunden auf 'running' stehen (Absturz, Timeout), als 'failed' abschließen."""
+        with self.conn.cursor() as cur:
+            cur.execute(
+                "UPDATE job_runs SET status = 'failed', finished_at = now(), "
+                "message = coalesce(message, '') || 'Lauf nicht abgeschlossen (Absturz oder Zeitüberschreitung)' "
+                "WHERE status = 'running' AND started_at < now() - make_interval(hours => %s)",
+                (hours,),
+            )
+            n = cur.rowcount
+        self.conn.commit()
+        return n
+
     def start_run(self) -> int:
         with self.conn.cursor() as cur:
             cur.execute("INSERT INTO job_runs DEFAULT VALUES RETURNING id")

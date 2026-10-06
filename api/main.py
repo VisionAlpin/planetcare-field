@@ -1,4 +1,4 @@
-"""PlanetCare Field — FastAPI Backend v0.5.0
+"""PlanetCare Field — FastAPI Backend v0.6.0
 Render PostgreSQL (SQLAlchemy) statt Supabase.
 """
 
@@ -33,7 +33,7 @@ WEB_DIR = Path(__file__).parent.parent / "web"
 
 app = FastAPI(
     title="PlanetCare Field API",
-    version="0.5.0",
+    version="0.6.0",
     description="Sustainability scoring for agricultural fields (NOSTRADAMUS / Horizon Europe TRL-4)",
     docs_url="/docs",
     redoc_url="/redoc",
@@ -117,187 +117,10 @@ def health(db: Session = Depends(get_db)):
             }
     except Exception:
         pass
-    return {"status": "ok", "version": "0.5.0", "lastJobRun": last_run}
+    return {"status": "ok", "version": "0.6.0", "lastJobRun": last_run}
 
 
 # ── Overview endpoint (main dashboard data) ───────────────────────────────────
-
-@app.get("/api/fields/{field_id}/overview")
-def get_field_overview(
-    field_id: str,
-    season: int = None,
-    db: Session = Depends(get_db),
-    authorization: str = Header(None),
-):
-    """Return overview data matching the PCF_DEMO structure for the frontend."""
-    # /demo path: use first field of demo farm, no auth
-    is_demo = (field_id == "default" or field_id == "demo")
-
-    if not is_demo:
-        email = get_farmer_email(authorization)
-        field = db.query(Field).join(Farm).filter(
-            Field.id == field_id,
-            Farm.owner_email == email,
-        ).first()
-    else:
-        # Demo: find Musterbetrieb Flachgau
-        demo_farm = db.query(Farm).filter(Farm.name == "Musterbetrieb Flachgau").first()
-        if not demo_farm:
-            raise HTTPException(status_code=404, detail="Demo data not seeded yet")
-        field = db.query(Field).filter(Field.farm_id == demo_farm.id).first()
-
-    if not field:
-        raise HTTPException(status_code=404, detail="Field not found")
-
-    farm = field.farm
-
-    # Get seasons
-    crop_years = (
-        db.query(CropYear)
-        .filter(CropYear.field_id == field.id)
-        .order_by(CropYear.year.desc())
-        .all()
-    )
-    if not crop_years:
-        raise HTTPException(status_code=404, detail="No crop years found")
-
-    target_year = season or crop_years[0].year
-    cy = next((c for c in crop_years if c.year == target_year), crop_years[0])
-
-    # Get latest profile for this crop year
-    profile = (
-        db.query(FieldProfile)
-        .filter(FieldProfile.crop_year_id == cy.id)
-        .order_by(FieldProfile.calculated_at.desc())
-        .first()
-    )
-
-    # Get indicator sources
-    indicators = db.query(IndicatorValue).filter(IndicatorValue.crop_year_id == cy.id).all()
-
-    def source_info(indicator_names):
-        hits = [i for i in indicators if i.indicator in indicator_names]
-        if not hits:
-            return None
-        h = hits[-1]
-        return {"source": h.source or "Sentinel-2", "date": str(h.acquired_at or date.today())}
-
-    def score_block(score_val, indicator_names, explanation=""):
-        if score_val is None:
-            return {"available": False, "explanation": explanation}
-        si = source_info(indicator_names)
-        return {
-            "available": True,
-            "value": round(float(score_val)),
-            "previousSeason": None,
-            "regionalAverage": None,
-            "source": si["source"] if si else "Methodik v1.0",
-            "date": si["date"] if si else str(date.today()),
-            "explanation": explanation,
-        }
-
-    # Build series from indicator history
-    series = _build_series(db, field.id, crop_years)
-
-    # Area from geometry (GeoJSON bbox estimate)
-    try:
-        from shapely.geometry import shape
-        from pyproj import Geod
-        geom = field.geom or {}
-        s = shape(geom)
-        geod = Geod(ellps="WGS84")
-        area_ha = round(abs(geod.geometry_area_perimeter(s)[0]) / 10000, 1)
-    except Exception:
-        area_ha = float(field.area_ha or 0)
-
-    seasons_list = [
-        {"value": f"{field.id}:{c.year}", "label": f"{c.crop_type or 'Anbau'} {c.year}"}
-        for c in crop_years
-    ]
-
-    hint_obj = None
-    if profile and profile.score_biodiversity and float(profile.score_biodiversity) < 40:
-        hint_obj = {
-            "text": "Die Bodenvielfalt liegt unter dem regionalen Durchschnitt. Mögliche Ursachen: hohe Homogenität der Vegetation, geringe Randstrukturen.",
-            "link": "#behandlungen",
-        }
-
-    result = {
-        "farm": {"id": str(farm.id), "name": farm.name},
-        "field": {
-            "id": str(field.id),
-            "name": field.name or "Schlag",
-            "municipality": farm.region or "",
-            "crop": cy.crop_type or "Anbau",
-            "season": cy.year,
-            "geometry": field.geom or {"type": "Polygon", "coordinates": [[[13.08, 47.92], [13.09, 47.92], [13.09, 47.91], [13.08, 47.91], [13.08, 47.92]]]},
-        },
-        "seasons": [c.year for c in crop_years],
-        "fields": [
-            {"id": str(f.id), "name": f.name or "Schlag"}
-            for f in db.query(Field).filter(Field.farm_id == farm.id).all()
-        ],
-        "scores": {
-            "water": score_block(profile.score_water if profile else None, ["ndvi_mean", "cdi"],
-                explanation="Wie gut der Schlag Trockenphasen übersteht, gemessen an Dürrestufe (CDI) und Vegetationsverlauf."),
-            "soil": score_block(profile.score_biodiversity if profile else None, ["ndvi_std"],
-                explanation="Entwicklung der Bodengesundheit: räumliche Variabilität des Vegetationsindex."),
-            "protection": score_block(profile.score_pesticide if profile else None, ["pesticide"],
-                explanation="Pflanzenschutzbelastung basierend auf eingetragenen Behandlungen (kg Wirkstoff/ha)."),
-        },
-        "hint": hint_obj,
-        "series": series,
-        "methodology": {
-            "version": profile.method_version if profile else "1.0",
-            "computedAt": str(profile.calculated_at.date() if profile and profile.calculated_at else date.today()),
-            "dataSources": ["Copernicus Sentinel-2", "EDO CDI"],
-        },
-    }
-
-    # Vorsaison-Scores für previousSeason
-    prev_year = target_year - 1
-    prev_cy = next((c for c in crop_years if c.year == prev_year), None)
-    previous_scores = {}
-    if prev_cy:
-        prev_profile = (
-            db.query(FieldProfile)
-            .filter(FieldProfile.crop_year_id == prev_cy.id)
-            .order_by(FieldProfile.calculated_at.desc())
-            .first()
-        )
-        if prev_profile:
-            previous_scores = {
-                "water": float(prev_profile.score_water) if prev_profile.score_water else None,
-                "soil": float(prev_profile.score_biodiversity) if prev_profile.score_biodiversity else None,
-                "protection": float(prev_profile.score_pesticide) if prev_profile.score_pesticide else None,
-            }
-
-    return finalize_overview(result, previous_scores)
-
-
-def _build_series(db, field_id, crop_years):
-    """Build time-series data for the trend chart."""
-    series = []
-    for cy in reversed(crop_years[-3:]):  # last 3 seasons
-        profile = (
-            db.query(FieldProfile)
-            .filter(FieldProfile.crop_year_id == cy.id)
-            .order_by(FieldProfile.calculated_at.desc())
-            .first()
-        )
-        if profile:
-            series.append({
-                "label": str(cy.year),
-                "date": f"{cy.year}-07-01",  # Mitte der Saison als X-Achsen-Datum
-                "water": round(float(profile.score_water)) if profile.score_water else None,
-                "soil": round(float(profile.score_biodiversity)) if profile.score_biodiversity else None,
-                "protection": round(float(profile.score_pesticide)) if profile.score_pesticide else None,
-                "total": round(float(profile.score_total)) if profile.score_total else None,
-            })
-    return series
-
-
-# ── Field list ────────────────────────────────────────────────────────────────
 
 @app.get("/api/fields")
 def list_fields(db: Session = Depends(get_db), authorization: str = Header(None)):
@@ -309,32 +132,32 @@ def list_fields(db: Session = Depends(get_db), authorization: str = Header(None)
     return {"fields": [{"id": str(f.id), "name": f.name} for f in fields]}
 
 
-# ── Behandlungen + Bridge zur Verbraucher App (v0.5.0) ───────────────────────
+# ── Routers v0.6.0 ────────────────────────────────────────────────────────────
 try:
     from .app.measures import router as measures_router
     from .app.bridge import router as bridge_router
+    from .app.overview import router as overview_router
+    from .app.auth import router as auth_router
+    from .app.pages import router as pages_router
 except ImportError:
     from app.measures import router as measures_router
     from app.bridge import router as bridge_router
+    from app.overview import router as overview_router
+    from app.auth import router as auth_router
+    from app.pages import router as pages_router
 
+app.include_router(overview_router)   # ersetzt alten /api/fields/{id}/overview
 app.include_router(measures_router)
 app.include_router(bridge_router)
+app.include_router(auth_router)
+app.include_router(pages_router)      # ersetzt /demo, /dashboard, /login, /
 
 
 # ── Serve frontend ────────────────────────────────────────────────────────────
+# /demo, /dashboard, /login, / werden von pages_router bedient
 
 if WEB_DIR.exists():
-    @app.get("/demo", response_class=HTMLResponse)
-    @app.get("/dashboard", response_class=HTMLResponse)
-    async def serve_app(request: Request):
-        return (WEB_DIR / "index.html").read_text()
-
-    @app.get("/", response_class=HTMLResponse)
-    async def root(request: Request):
-        return (WEB_DIR / "index.html").read_text()
-
     # Statische Dateien: styles/, js/, data/, manifest.json etc.
-    # Explizite Routen für Unterordner damit /api/* nicht überschrieben wird
     from fastapi.responses import FileResponse as FR
 
     @app.get("/styles/{path:path}")

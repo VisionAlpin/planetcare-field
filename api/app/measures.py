@@ -65,14 +65,14 @@ class MeasureOut(MeasureIn):
 
 def owns_field(conn, field_id: str, farm_id: str) -> bool:
     with conn.cursor() as cur:
-        cur.execute("SELECT 1 FROM pcf_fields WHERE id = %s AND farm_id = %s", (field_id, farm_id))
+        cur.execute("SELECT 1 FROM fields WHERE id = %s AND farm_id = %s", (field_id, farm_id))
         return cur.fetchone() is not None
 
 
 def list_measures(conn, field_id: str, season: int) -> list[MeasureOut]:
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT id::text, day, kind, product, amount, unit FROM pcf_measures "
+            "SELECT id::text, day, kind, product, amount, unit FROM measures "
             "WHERE field_id = %s AND type = 'pflanzenschutz' AND day BETWEEN %s AND %s "
             "ORDER BY day DESC, created_at DESC",
             (field_id, date(season, 1, 1), date(season, 12, 31)),
@@ -87,7 +87,7 @@ def list_measures(conn, field_id: str, season: int) -> list[MeasureOut]:
 def create_measure(conn, field_id: str, data: MeasureIn, user_id: Optional[str]) -> MeasureOut:
     with conn.cursor() as cur:
         cur.execute(
-            "INSERT INTO pcf_measures (field_id, day, type, kind, product, amount, unit, created_by) "
+            "INSERT INTO measures (field_id, day, type, kind, product, amount, unit, created_by) "
             "VALUES (%s, %s, 'pflanzenschutz', %s, %s, %s, %s, %s) RETURNING id::text",
             (field_id, data.day, data.kind, data.product, data.amount, data.unit, user_id),
         )
@@ -100,7 +100,7 @@ def delete_measure(conn, measure_id: str, farm_id: str) -> bool:
     """Löscht nur, wenn die Maßnahme zu einem Schlag des eigenen Betriebs gehört."""
     with conn.cursor() as cur:
         cur.execute(
-            "DELETE FROM pcf_measures m USING pcf_fields f WHERE m.id = %s AND m.field_id = f.id AND f.farm_id = %s",
+            "DELETE FROM measures m USING fields f WHERE m.id = %s AND m.field_id = f.id AND f.farm_id = %s",
             (measure_id, farm_id),
         )
         deleted = cur.rowcount

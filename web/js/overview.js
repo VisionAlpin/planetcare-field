@@ -370,8 +370,9 @@
   /* ---------- Gesamte Seite ---------- */
 
   function renderOverview(d) {
-    window.PCF_CURRENT = { fieldId: d.field.id, fieldName: d.field.name, season: d.field.season };
-    const ha = areaHa(d.field.geometry).toLocaleString("de-AT", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    window.PCF_CURRENT = { fieldId: d.field.id, fieldName: d.field.name, season: d.field.season, regionCode: d.field.regionCode || "AT-5", crop: d.field.crop };
+    document.dispatchEvent(new CustomEvent("pcf:overview", { detail: window.PCF_CURRENT }));
+    const ha = (isNum(d.field.areaHa) ? d.field.areaHa : areaHa(d.field.geometry)).toLocaleString("de-AT", { minimumFractionDigits: 1, maximumFractionDigits: 1 });
 
     document.querySelector("[data-farm-name]").textContent = d.farm.name;
     document.querySelector("[data-field-name]").textContent = d.field.name;
@@ -420,12 +421,23 @@
   /* ---------- Daten laden ---------- */
 
   // Lädt die Übersicht von der API. Ohne Server (Datei geöffnet) oder mit ?offline werden die Demo Daten genutzt.
+  // offline: Datei geöffnet oder ?offline · demo: unter /demo (nur lesen) · app: angemeldetes Dashboard
+  function mode() {
+    if (!location.protocol.startsWith("http") || new URLSearchParams(location.search).has("offline")) return "offline";
+    return location.pathname.startsWith("/demo") ? "demo" : "app";
+  }
+
+  function apiHeaders(extra) {
+    const h = Object.assign({ Accept: "application/json" }, extra || {});
+    if (mode() === "demo") h["X-PCF-Mode"] = "demo";
+    return h;
+  }
+
   async function loadOverview({ fieldId, season, demoData }) {
-    const offline = !location.protocol.startsWith("http") || new URLSearchParams(location.search).has("offline");
-    if (offline) return demoData;
+    if (mode() === "offline") return demoData;
     const res = await fetch("/api/fields/" + encodeURIComponent(fieldId) + "/overview?season=" + encodeURIComponent(season), {
       credentials: "same-origin",
-      headers: { Accept: "application/json" }
+      headers: apiHeaders()
     });
     if (res.status === 401) {
       location.href = "/login";
@@ -435,5 +447,5 @@
     return res.json();
   }
 
-  window.PlanetCareField = { renderOverview, loadOverview, computeTotal, rating, areaHa, deriveHint, VERSION: "0.5.0" };
+  window.PlanetCareField = { renderOverview, loadOverview, mode, apiHeaders, computeTotal, rating, areaHa, deriveHint, VERSION: "0.6.0" };
 })();

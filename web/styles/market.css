@@ -1,0 +1,24 @@
+/* PlanetCare Field: Tab Markt, Kopfzeile Konto */
+.btn-text { background: none; border: 0; font: inherit; font-size: var(--fs-small); color: var(--brand); font-weight: 500; cursor: pointer; min-height: 44px; padding: 0 var(--s2); text-decoration: none; display: inline-flex; align-items: center; }
+.user-email { font-size: var(--fs-small); color: var(--text-muted); }
+
+.mk-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: var(--s4); }
+.mk-card { border: 1px solid var(--border); border-radius: var(--radius); padding: var(--s5); }
+.mk-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--s3); margin-bottom: var(--s4); }
+.mk-head h2 { margin: 0; font-size: 16px; font-weight: 600; }
+.mk-n { color: var(--text-muted); font-size: var(--fs-meta); font-weight: 400; }
+.mk-bar { position: relative; height: 10px; background: var(--grid); border-radius: 5px; overflow: hidden; }
+.mk-fill { position: absolute; left: 0; top: 0; bottom: 0; background: var(--brand); border-radius: 5px; }
+.mk-mid { position: absolute; left: 50%; top: -2px; bottom: -2px; width: 2px; background: var(--bg); }
+.mk-value { margin: var(--s2) 0 var(--s3); font-size: var(--fs-body); }
+.mk-empty { margin: 0 0 var(--s3); color: var(--text-muted); font-size: var(--fs-small); }
+.mk-note { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius); padding: var(--s4); color: var(--text-muted); font-size: var(--fs-small); margin: 0 0 var(--s4); }
+.mk-note.is-error { color: var(--critical); }
+.mk-foot { margin-top: var(--s5); color: var(--text-muted); font-size: var(--fs-meta); max-width: 720px; }
+
+@media (max-width: 767px) {
+  .mk-grid { grid-template-columns: 1fr; }
+  .user-email { display: none; }
+}
+
+[hidden] { display: none !important; }

@@ -77,6 +77,7 @@ class FieldInfo(BaseModel):
     season: int
     geometry: Geometry
     areaHa: Optional[float] = Field(default=None, description="Fläche in ha, aus PostGIS ST_Area(geom::geography)/10000")
+    regionCode: Optional[str] = Field(default=None, description="ISO 3166-2, z. B. AT-5")
 
 
 class FieldRef(BaseModel):
@@ -123,7 +124,7 @@ class SeriesPoint(BaseModel):
 
 class Methodology(BaseModel):
     version: str = Field(description="z. B. 'v1.0'")
-    computedAt: str
+    computedAt: Optional[str] = None
     dataSources: list[str]
 
 

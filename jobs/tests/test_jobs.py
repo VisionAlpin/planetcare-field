@@ -130,3 +130,27 @@ def test_geojson_pruefung():
         assert False
     except SystemExit:
         pass
+
+
+def test_lauf_wird_immer_abgeschlossen(monkeypatch=None):
+    """Auch wenn alles scheitert (z. B. Zugangsdaten fehlen), endet der Lauf nicht auf 'running'."""
+    import pcf_jobs.run_nightly as rn
+    import pcf_jobs.store as st
+
+    calls = {}
+
+    class S:
+        def __init__(self): pass
+        def close_stale_runs(self): calls["stale"] = True; return 1
+        def start_run(self): return 7
+        def fields(self): raise RuntimeError("DB weg")
+        def rollback(self): pass
+        def finish_run(self, run_id, status, ok, failed, msg): calls["finish"] = (run_id, status, msg)
+
+    orig = st.PostgresStore
+    st.PostgresStore = S
+    try:
+        code = rn.main(["--season", "2026"])
+    finally:
+        st.PostgresStore = orig
+    assert code == 1 and calls["stale"] and calls["finish"][0] == 7 and calls["finish"][1] == "failed" and "DB weg" in calls["finish"][2]

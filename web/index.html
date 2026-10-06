@@ -15,17 +15,18 @@
   <link rel="stylesheet" href="styles/tokens.css" />
   <link rel="stylesheet" href="styles/overview.css" />
   <link rel="stylesheet" href="styles/measures.css" />
+  <link rel="stylesheet" href="styles/market.css" />
 </head>
 <body>
   <header class="app-header">
     <div class="container">
       <a class="brand" href="/dashboard"><img class="brand-mark" src="icons/logo-mark.svg" alt="" width="28" height="28" />PlanetCare Field</a>
-      <span class="badge">Demo</span>
+      <span class="badge" data-demo-badge hidden>Demo</span>
       <div class="header-right">
         <span class="farm-name" data-farm-name></span>
-        <button class="icon-button" type="button" aria-label="Menü öffnen">
-          <svg class="icon" viewBox="0 0 24 24" aria-hidden="true"><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
-        </button>
+        <span class="user-email" data-user-email hidden></span>
+        <button class="btn-text" type="button" data-logout hidden>Abmelden</button>
+        <a class="btn-text" href="/login" data-login-link hidden>Anmelden</a>
       </div>
     </div>
   </header>
@@ -39,7 +40,7 @@
   </nav>
 
   <main>
-    <div class="container">
+    <div class="container" data-view="uebersicht">
       <div class="page-head">
         <div>
           <h1 data-field-name></h1>
@@ -78,6 +79,20 @@
           </div>
         </section>
       </div>
+    </div>
+
+    <div class="container" data-view="markt" hidden>
+      <div class="page-head">
+        <div>
+          <h1>Marktsignal</h1>
+          <p class="page-meta" data-market-meta>Was Verbraucher in Ihrer Region beim Einkauf wählen</p>
+        </div>
+      </div>
+      <div data-market></div>
+    </div>
+
+    <div class="container" data-view="felder" hidden>
+      <div class="page-head"><div><h1>Felder</h1><p class="page-meta">Karte und Liste aller Schläge folgen in Version 0.7.</p></div></div>
     </div>
   </main>
 
@@ -145,6 +160,11 @@
   <script src="data/demo-data.js"></script>
   <script src="js/overview.js"></script>
   <script src="js/measures.js"></script>
+  <script src="js/market.js"></script>
+  <script src="js/shell.js"></script>
+  <script>
+    if ("serviceWorker" in navigator && location.protocol === "https:") navigator.serviceWorker.register("/sw.js");
+  </script>
   <script>
     // Tab Symbole einsetzen (nur in der mobilen Leiste sichtbar)
     document.querySelectorAll("[data-icon]").forEach((el) => { el.outerHTML = icon(el.dataset.icon); });
