@@ -70,6 +70,7 @@ def _r(v):
 def main(argv=None) -> int:
     p = argparse.ArgumentParser()
     p.add_argument("--season", type=int, default=date.today().year)
+    p.add_argument("--field", help="nur diesen Schlag rechnen (ID)")
     p.add_argument("--dry-run", action="store_true")
     args = p.parse_args(argv)
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s")
@@ -77,23 +78,41 @@ def main(argv=None) -> int:
     from .store import PostgresStore
 
     store = PostgresStore()
-    cdse = CdseClient()
+    if not args.dry_run:
+        n = store.close_stale_runs()
+        if n:
+            log.warning("%d hängende Läufe als 'failed' markiert", n)
     run_id = None if args.dry_run else store.start_run()
     ok = failed = 0
-    errors = []
-    for f in store.fields():
-        try:
-            n = process_field(f, args.season, date.today(), store, cdse, fetch_daily_weather, args.dry_run)
-            log.info("%s: %d Stichtage", f.name, n)
-            ok += 1
-        except Exception as e:  # ein Schlag darf die anderen nicht aufhalten
-            store.rollback()
-            failed += 1
-            errors.append(f"{f.name}: {e}")
-            log.error("%s fehlgeschlagen: %s\n%s", f.name, e, traceback.format_exc())
-    status = "ok" if not failed else ("partial" if ok else "failed")
-    if run_id:
-        store.finish_run(run_id, status, ok, failed, "\n".join(errors))
+    errors: list[str] = []
+    status = "failed"
+    try:
+        cdse = CdseClient()
+        fields = [f for f in store.fields() if not args.field or f.id == args.field]
+        if not fields:
+            errors.append("Keine Schläge mit Geometrie gefunden")
+        for f in fields:
+            try:
+                n = process_field(f, args.season, date.today(), store, cdse, fetch_daily_weather, args.dry_run)
+                log.info("%s: %d Stichtage", f.name, n)
+                ok += 1
+            except Exception as e:  # ein Schlag darf die anderen nicht aufhalten
+                store.rollback()
+                failed += 1
+                errors.append(f"{f.name}: {e}")
+                log.error("%s fehlgeschlagen: %s\n%s", f.name, e, traceback.format_exc())
+        status = "ok" if ok and not failed else ("partial" if ok else "failed")
+    except Exception as e:  # z. B. Zugangsdaten fehlen, Datenbank weg
+        errors.append(f"Abbruch: {e}")
+        log.error("Abbruch: %s\n%s", e, traceback.format_exc())
+    finally:
+        # Der Lauf wird IMMER abgeschlossen, auch bei Abbruch (sonst bleibt er auf "running")
+        if run_id:
+            try:
+                store.rollback()
+                store.finish_run(run_id, status, ok, failed, "\n".join(errors))
+            except Exception as e:  # noqa: BLE001
+                log.error("Lauf konnte nicht abgeschlossen werden: %s", e)
     log.info("Fertig: %s (%d ok, %d fehlgeschlagen)", status, ok, failed)
     return 0 if status != "failed" else 1  # Exit Code 1 -> Render meldet den Fehler per E Mail
 

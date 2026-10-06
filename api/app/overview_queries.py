@@ -86,11 +86,22 @@ def regional_values(conn, field_id: str, season: int) -> dict:
     return {k: [r[i] for r in rows if r[i] is not None] for i, k in enumerate(KEYS)}
 
 
-def last_job_run(conn) -> dict | None:
-    """Für /health: wann lief der Nachtjob zuletzt und wie."""
+def last_job_run(conn, stale_hours: int = 6) -> dict | None:
+    """Für /health: wann lief der Nachtjob zuletzt und wie. Hängende Läufe erscheinen als 'stale'."""
     with conn.cursor() as cur:
-        cur.execute("SELECT finished_at, status, fields_ok, fields_failed FROM job_runs ORDER BY id DESC LIMIT 1")
+        cur.execute(
+            "SELECT started_at, finished_at, status, fields_ok, fields_failed, "
+            "(status = 'running' AND started_at < now() - make_interval(hours => %s)) AS stale "
+            "FROM job_runs ORDER BY id DESC LIMIT 1",
+            (stale_hours,),
+        )
         r = cur.fetchone()
     if not r:
         return None
-    return {"finishedAt": r[0].isoformat() if r[0] else None, "status": r[1], "fieldsOk": r[2], "fieldsFailed": r[3]}
+    return {
+        "startedAt": r[0].isoformat() if r[0] else None,
+        "finishedAt": r[1].isoformat() if r[1] else None,
+        "status": "stale" if r[5] else r[2],
+        "fieldsOk": r[3],
+        "fieldsFailed": r[4],
+    }

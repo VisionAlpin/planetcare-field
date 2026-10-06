@@ -18,8 +18,8 @@
   const msg = dlg.querySelector("[data-measures-msg]");
   const title = dlg.querySelector("[data-measures-title]");
 
-  const offline = !location.protocol.startsWith("http") || new URLSearchParams(location.search).has("offline");
-  const readOnly = offline || location.pathname.startsWith("/demo");
+  const offline = window.PlanetCareField.mode() === "offline";
+  const readOnly = window.PlanetCareField.mode() !== "app";
 
   function esc(s) {
     return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -34,7 +34,7 @@
   }
 
   async function api(path, opts) {
-    const res = await fetch(path, Object.assign({ credentials: "same-origin", headers: { Accept: "application/json", "Content-Type": "application/json" } }, opts));
+    const res = await fetch(path, Object.assign({ credentials: "same-origin", headers: window.PlanetCareField.apiHeaders({ "Content-Type": "application/json" }) }, opts));
     if (res.status === 401) { location.href = "/login"; throw new Error("401"); }
     if (!res.ok && res.status !== 204) {
       let detail = "Fehler " + res.status;

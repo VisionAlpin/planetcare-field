@@ -150,19 +150,19 @@ def build_signal(category: str, region: str, events: list[dict]) -> CategorySign
 PROFILE_SQL = """
 WITH b AS (
   SELECT pb.batch_id, bt.harvest_year, bt.region_code
-  FROM pcf_product_batches pb JOIN pcf_batches bt ON bt.id = pb.batch_id
+  FROM product_batches pb JOIN batches bt ON bt.id = pb.batch_id
   WHERE pb.gtin = %s AND pb.valid_from <= %s AND (pb.valid_to IS NULL OR pb.valid_to >= %s)
   ORDER BY pb.valid_from DESC LIMIT 1
 ),
 f AS (
   SELECT bf.field_id, bf.share, b.harvest_year, b.region_code
-  FROM pcf_batch_fields bf JOIN b ON b.batch_id = bf.batch_id
+  FROM batch_fields bf JOIN b ON b.batch_id = bf.batch_id
   WHERE bf.consent_at IS NOT NULL AND bf.revoked_at IS NULL
 )
 SELECT f.share, s.water, s.soil, s.protection, f.harvest_year, f.region_code
 FROM f
 JOIN LATERAL (
-  SELECT water, soil, protection FROM pcf_score_snapshots
+  SELECT water, soil, protection FROM score_snapshots
   WHERE field_id = f.field_id AND season = f.harvest_year ORDER BY asof DESC LIMIT 1
 ) s ON true
 """
@@ -183,14 +183,11 @@ def field_profile(conn, gtin: str, today: Optional[date] = None) -> Optional[Fie
 
 
 def store_events(conn, batch: DemandEventBatch) -> int:
-    import json as _json
     with conn.cursor() as cur:
         cur.executemany(
-            "INSERT INTO pcf_demand_events (type, gtin, compared_with, verified, compared_verified, category, region, week, panel, value) "
+            "INSERT INTO demand_events (type, gtin, compared_with, verified, compared_verified, category, region, week, panel, value) "
             "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
-            [(e.type, e.gtin, _json.dumps(e.comparedWith), e.verified,
-              _json.dumps(e.comparedVerified), e.category, e.region, e.week, e.panel, e.value)
-             for e in batch.events],
+            [(e.type, e.gtin, e.comparedWith, e.verified, e.comparedVerified, e.category, e.region, e.week, e.panel, e.value) for e in batch.events],
         )
     conn.commit()
     return len(batch.events)
@@ -198,7 +195,7 @@ def store_events(conn, batch: DemandEventBatch) -> int:
 
 def market_signal(conn, region: str, category: Optional[str], today: Optional[date] = None) -> list[CategorySignal]:
     weeks = iso_weeks_back(today or date.today(), SIGNAL_WEEKS)
-    sql = ("SELECT category, type, verified, compared_verified, panel, value FROM pcf_demand_events "
+    sql = ("SELECT category, type, verified, compared_verified, panel, value FROM demand_events "
            "WHERE region = %s AND week = ANY(%s)" + (" AND category = %s" if category else ""))
     params = [region, weeks] + ([category] if category else [])
     with conn.cursor() as cur:
