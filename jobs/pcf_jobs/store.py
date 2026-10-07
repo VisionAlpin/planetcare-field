@@ -16,26 +16,26 @@ FIELDS_SQL = """
 SELECT f.id::text, f.name, ST_AsGeoJSON(f.geom)::text, f.season_start,
        ST_Y(ST_Centroid(f.geom)), ST_X(ST_Centroid(f.geom)),
        ST_Area(f.geom::geography) / 10000.0
-FROM fields f
+FROM pcf_fields f
 WHERE f.geom IS NOT NULL
 ORDER BY f.name
 """
 
 # Pflanzenschutz Behandlungen je Schlag. Tabelle laut Konzept "Maßnahme".
 TREATMENTS_SQL = """
-SELECT m.day FROM measures m
+SELECT m.day FROM pcf_measures m
 WHERE m.field_id = %s AND m.type = 'pflanzenschutz' AND m.day BETWEEN %s AND %s
 """
 
 UPSERT_INDICATOR_SQL = """
-INSERT INTO indicator_values (field_id, day, indicator, value, quality, source)
+INSERT INTO pcf_indicator_values (field_id, day, indicator, value, quality, source)
 VALUES (%s, %s, %s, %s, %s, %s)
 ON CONFLICT (field_id, day, indicator) DO UPDATE
 SET value = EXCLUDED.value, quality = EXCLUDED.quality, source = EXCLUDED.source, created_at = now()
 """
 
 UPSERT_SNAPSHOT_SQL = """
-INSERT INTO score_snapshots (field_id, season, asof, water, soil, protection, sources, data_dates, methodology)
+INSERT INTO pcf_score_snapshots (field_id, season, asof, water, soil, protection, sources, data_dates, methodology)
 VALUES (%s, %s, %s, %s, %s, %s, %s::jsonb, %s::jsonb, %s)
 ON CONFLICT (field_id, season, asof) DO UPDATE
 SET water = EXCLUDED.water, soil = EXCLUDED.soil, protection = EXCLUDED.protection,
@@ -88,7 +88,7 @@ class PostgresStore:
         """Läufe, die seit Stunden auf 'running' stehen (Absturz, Timeout), als 'failed' abschließen."""
         with self.conn.cursor() as cur:
             cur.execute(
-                "UPDATE job_runs SET status = 'failed', finished_at = now(), "
+                "UPDATE pcf_job_runs SET status = 'failed', finished_at = now(), "
                 "message = coalesce(message, '') || 'Lauf nicht abgeschlossen (Absturz oder Zeitüberschreitung)' "
                 "WHERE status = 'running' AND started_at < now() - make_interval(hours => %s)",
                 (hours,),
@@ -99,7 +99,7 @@ class PostgresStore:
 
     def start_run(self) -> int:
         with self.conn.cursor() as cur:
-            cur.execute("INSERT INTO job_runs DEFAULT VALUES RETURNING id")
+            cur.execute("INSERT INTO pcf_job_runs DEFAULT VALUES RETURNING id")
             run_id = cur.fetchone()[0]
         self.conn.commit()
         return run_id
@@ -107,7 +107,7 @@ class PostgresStore:
     def finish_run(self, run_id: int, status: str, ok: int, failed: int, message: str = "") -> None:
         with self.conn.cursor() as cur:
             cur.execute(
-                "UPDATE job_runs SET finished_at = now(), status = %s, fields_ok = %s, fields_failed = %s, message = %s WHERE id = %s",
+                "UPDATE pcf_job_runs SET finished_at = now(), status = %s, fields_ok = %s, fields_failed = %s, message = %s WHERE id = %s",
                 (status, ok, failed, message[:4000], run_id),
             )
         self.conn.commit()
