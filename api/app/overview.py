@@ -27,13 +27,13 @@ DATA_SOURCES = ["Copernicus Sentinel 2", "ERA5-Land"]
 FIELD_SQL = """
 SELECT f.id::text, f.name, coalesce(f.municipality, ''), f.crop, ST_AsGeoJSON(f.geom)::text,
        ST_Area(f.geom::geography) / 10000.0, f.region_code, fa.id::text, fa.name
-FROM fields f JOIN farms fa ON fa.id = f.farm_id
+FROM pcf_fields f JOIN pcf_farms fa ON fa.id = f.farm_id
 WHERE f.id = %s AND f.farm_id = %s
 """
-DEFAULT_FIELD_SQL = "SELECT id::text FROM fields WHERE farm_id = %s AND geom IS NOT NULL ORDER BY name LIMIT 1"
-FIELDS_OF_FARM_SQL = "SELECT id::text, name FROM fields WHERE farm_id = %s ORDER BY name"
-SEASONS_SQL = "SELECT DISTINCT season FROM score_snapshots WHERE field_id = %s ORDER BY season DESC"
-COMPUTED_AT_SQL = "SELECT max(computed_at)::date FROM score_snapshots WHERE field_id = %s AND season = %s"
+DEFAULT_FIELD_SQL = "SELECT id::text FROM pcf_fields WHERE farm_id = %s AND geom IS NOT NULL ORDER BY name LIMIT 1"
+FIELDS_OF_FARM_SQL = "SELECT id::text, name FROM pcf_fields WHERE farm_id = %s ORDER BY name"
+SEASONS_SQL = "SELECT DISTINCT season FROM pcf_score_snapshots WHERE field_id = %s ORDER BY season DESC"
+COMPUTED_AT_SQL = "SELECT max(computed_at)::date FROM pcf_score_snapshots WHERE field_id = %s AND season = %s"
 
 
 def resolve_field_id(conn, field_id: str, farm_id: str) -> Optional[str]:

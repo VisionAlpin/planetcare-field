@@ -29,7 +29,7 @@ def _load(v):
 def scores_and_series(conn, field_id: str, season: int) -> tuple[dict, list]:
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT asof, water, soil, protection, sources, data_dates FROM score_snapshots "
+            "SELECT asof, water, soil, protection, sources, data_dates FROM pcf_score_snapshots "
             "WHERE field_id = %s AND season = %s ORDER BY asof",
             (field_id, season),
         )
@@ -55,7 +55,7 @@ def previous_scores(conn, field_id: str, season: int) -> dict:
     """Letzter Stichtag der Vorsaison. Leeres Dict, wenn die Vorsaison nicht berechnet ist."""
     with conn.cursor() as cur:
         cur.execute(
-            "SELECT water, soil, protection FROM score_snapshots WHERE field_id = %s AND season = %s "
+            "SELECT water, soil, protection FROM pcf_score_snapshots WHERE field_id = %s AND season = %s "
             "ORDER BY asof DESC LIMIT 1",
             (field_id, season),
         )
@@ -71,10 +71,10 @@ def regional_values(conn, field_id: str, season: int) -> dict:
     with conn.cursor() as cur:
         cur.execute(
             """
-            WITH me AS (SELECT crop, region_code FROM fields WHERE id = %s),
+            WITH me AS (SELECT crop, region_code FROM pcf_fields WHERE id = %s),
             latest AS (
               SELECT DISTINCT ON (s.field_id) s.field_id, s.water, s.soil, s.protection
-              FROM score_snapshots s JOIN fields f ON f.id = s.field_id, me
+              FROM pcf_score_snapshots s JOIN pcf_fields f ON f.id = s.field_id, me
               WHERE s.season = %s AND f.id <> %s AND f.crop = me.crop AND f.region_code = me.region_code
               ORDER BY s.field_id, s.asof DESC
             )
@@ -92,7 +92,7 @@ def last_job_run(conn, stale_hours: int = 6) -> dict | None:
         cur.execute(
             "SELECT started_at, finished_at, status, fields_ok, fields_failed, "
             "(status = 'running' AND started_at < now() - make_interval(hours => %s)) AS stale "
-            "FROM job_runs ORDER BY id DESC LIMIT 1",
+            "FROM pcf_job_runs ORDER BY id DESC LIMIT 1",
             (stale_hours,),
         )
         r = cur.fetchone()
